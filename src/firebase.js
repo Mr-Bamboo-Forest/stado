@@ -3,12 +3,12 @@ import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDuanwA4vvAvszCB4qr75d9XufMEq_KE68",
-  authDomain: "stado-e7897.firebaseapp.com",
-  projectId: "stado-e7897",
-  storageBucket: "stado-e7897.firebasestorage.app",
-  messagingSenderId: "419064605606",
-  appId: "1:419064605606:web:2bc8402f6570e889d5fd67"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
 const app = initializeApp(firebaseConfig);
