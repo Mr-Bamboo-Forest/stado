@@ -1,12 +1,35 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { onAuthStateChanged } from 'firebase/auth'
+import { doc, getDoc } from 'firebase/firestore'
+import { auth, db } from './firebase'
+import SignIn from './screens/SignIn'
+import Onboarding from './screens/Onboarding'
 import Discover from './screens/Discover'
 import GameDetail from './screens/GameDetail'
 import PostGame from './screens/PostGame'
 import Profile from './screens/Profile'
 
 export default function App() {
+  const [user, setUser] = useState(null)
+  const [hasProfile, setHasProfile] = useState(null)
+  const [loading, setLoading] = useState(true)
   const [screen, setScreen] = useState('discover')
   const [selectedGame, setSelectedGame] = useState(null)
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        setUser(firebaseUser)
+        const profileSnap = await getDoc(doc(db, 'users', firebaseUser.uid))
+        setHasProfile(profileSnap.exists())
+      } else {
+        setUser(null)
+        setHasProfile(null)
+      }
+      setLoading(false)
+    })
+    return () => unsubscribe()
+  }, [])
 
   const goToGame = (game) => {
     setSelectedGame(game)
@@ -16,6 +39,29 @@ export default function App() {
   const goBack = () => {
     setSelectedGame(null)
     setScreen('discover')
+  }
+
+  const handleSignInSuccess = () => {
+  }
+
+  const handleOnboardingComplete = () => {
+    setHasProfile(true)
+  }
+
+  if (loading) {
+    return (
+      <div style={styles.loading}>
+        <span style={styles.wordmark}>stado</span>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return <SignIn onSuccess={handleSignInSuccess} />
+  }
+
+  if (!hasProfile) {
+    return <Onboarding onComplete={handleOnboardingComplete} />
   }
 
   return (
@@ -79,6 +125,19 @@ function NavPostButton({ onClick }) {
 }
 
 const styles = {
+  loading: {
+    flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#F1EFE8',
+  },
+  wordmark: {
+    fontSize: '32px',
+    fontWeight: '700',
+    letterSpacing: '-0.5px',
+    color: '#085041',
+  },
   container: {
     flex: 1,
     display: 'flex',
