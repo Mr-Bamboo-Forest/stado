@@ -1,166 +1,323 @@
-import { useState } from "react";
+import { useState } from 'react'
 
 export default function GameDetail({ game, onBack }) {
-  const [joined, setJoined] = useState(false);
+  const [joined, setJoined] = useState(false)
 
-  if (!game) return null;
-
-  const spotColor =
-    game.spotsRemaining === 1
-      ? { bg: "#FCEBEB", text: "#501313" }
-      : game.spotsRemaining <= 4
-      ? { bg: "#FAEEDA", text: "#633806" }
-      : { bg: "#E1F5EE", text: "#085041" };
+  const spots = game.spotsRemaining
+  let spotsStyle = styles.spotsGreen
+  if (spots >= 2 && spots <= 4) spotsStyle = styles.spotsAmber
+  if (spots === 1) spotsStyle = styles.spotsRed
 
   return (
     <div style={styles.screen}>
-      {/* Header */}
-      <div style={styles.header}>
-        <button style={styles.backBtn} onClick={onBack}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2C2C2A" strokeWidth="2.5">
-            <path d="M19 12H5M12 5l-7 7 7 7" />
+      <header style={styles.header}>
+        <button style={styles.backBtn} onClick={onBack} aria-label="Back">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2C2C2A" strokeWidth="2" strokeLinecap="round">
+            <path d="M15 18l-6-6 6-6" />
           </svg>
         </button>
-        <span style={styles.headerTitle}>Game details</span>
-        <div style={{ width: 36 }} />
-      </div>
+        <span style={styles.headerTitle}>Game Details</span>
+        <div style={styles.headerSpacer} />
+      </header>
 
-      <div style={styles.body}>
-        {/* Title block */}
-        <div style={styles.titleBlock}>
-          <div style={styles.titleRow}>
+      <div style={styles.content}>
+        <div style={styles.hero}>
+          <div style={styles.heroTop}>
             <h1 style={styles.gameName}>{game.name}</h1>
-            <span style={styles.formatBadge}>{game.format}</span>
+            <span style={styles.format}>{game.format}</span>
           </div>
-          <span style={{ ...styles.spotsBadge, background: spotColor.bg, color: spotColor.text }}>
-            {game.spotsRemaining} {game.spotsRemaining === 1 ? "spot" : "spots"} left
+          <span style={{ ...styles.spotsBadge, ...spotsStyle }}>
+            {spots === 1 ? '1 spot left' : `${spots} spots left`}
           </span>
         </div>
 
-        {/* Info rows */}
-        <div style={styles.infoCard}>
-          <InfoRow icon={<ClockIcon />} label="When" value={`${game.date} · ${game.time}`} />
-          <Divider />
-          <InfoRow
-            icon={<PinIcon />}
-            label="Where"
-            value={joined ? game.location + ", Brisbane" : "Join to reveal full address"}
-            muted={!joined}
-          />
-          <Divider />
-          <InfoRow icon={<PersonIcon />} label="Host" value={game.host} />
-          <Divider />
-          <InfoRow icon={<StarIcon />} label="Skill level" value={game.skill} />
-        </div>
-
-        {/* Host note */}
-        {game.note && (
-          <div style={styles.noteCard}>
-            <p style={styles.noteLabel}>Host note</p>
-            <p style={styles.noteText}>{game.note}</p>
-          </div>
-        )}
-
-        {/* Players */}
         <div style={styles.section}>
-          <p style={styles.sectionLabel}>
-            Players ({game.players.length}/{game.spotsTotal})
-          </p>
+          <div style={styles.infoRow}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7A7A72" strokeWidth="2">
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+              <circle cx="12" cy="10" r="3" />
+            </svg>
+            <div>
+              <p style={styles.infoLabel}>Location</p>
+              <p style={styles.infoValue}>{game.location}</p>
+              {joined && <p style={styles.address}>{game.address}</p>}
+            </div>
+          </div>
+          <div style={styles.infoRow}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7A7A72" strokeWidth="2">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 6v6l4 2" />
+            </svg>
+            <div>
+              <p style={styles.infoLabel}>Time</p>
+              <p style={styles.infoValue}>{game.date} {game.time}</p>
+            </div>
+          </div>
+          <div style={styles.infoRow}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7A7A72" strokeWidth="2">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+            <div>
+              <p style={styles.infoLabel}>Host</p>
+              <p style={styles.infoValue}>{game.host}</p>
+            </div>
+          </div>
+          <div style={styles.infoRow}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7A7A72" strokeWidth="2">
+              <path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2z" />
+            </svg>
+            <div>
+              <p style={styles.infoLabel}>Level</p>
+              <p style={styles.infoValue}>{game.skill}</p>
+            </div>
+          </div>
+        </div>
+
+        <div style={styles.section}>
+          <p style={styles.sectionTitle}>About</p>
+          <p style={styles.note}>{game.note}</p>
+        </div>
+
+        <div style={styles.section}>
+          <p style={styles.sectionTitle}>Players ({game.players.length}/{game.spotsTotal})</p>
           <div style={styles.playerList}>
-            {game.players.map((p, i) => (
+            {game.players.map((player, i) => (
               <div key={i} style={styles.playerChip}>
-                <div style={styles.playerAvatar}>{p[0]}</div>
-                <span style={styles.playerName}>{p}</span>
-              </div>
-            ))}
-            {Array.from({ length: game.spotsRemaining }).map((_, i) => (
-              <div key={"empty-" + i} style={{ ...styles.playerChip, opacity: 0.35 }}>
-                <div style={{ ...styles.playerAvatar, background: "#E0DDD5" }}>?</div>
-                <span style={styles.playerName}>Open spot</span>
+                <div style={styles.playerAvatar}>
+                  {player[0]}
+                </div>
+                <span style={styles.playerName}>{player}</span>
+                {player === game.host && (
+                  <span style={styles.hostBadge}>Host</span>
+                )}
               </div>
             ))}
           </div>
         </div>
-      </div>
 
-      {/* CTA */}
-      <div style={styles.cta}>
-        {joined ? (
-          <div style={styles.joinedState}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1D9E75" strokeWidth="2.5">
-              <path d="M20 6L9 17l-5-5" />
-            </svg>
-            <span style={styles.joinedText}>You're in — see you there</span>
-          </div>
-        ) : (
+        {!joined ? (
           <button style={styles.joinBtn} onClick={() => setJoined(true)}>
-            Join game · {game.spotsRemaining} {game.spotsRemaining === 1 ? "spot" : "spots"} left
+            Join game to see address
           </button>
+        ) : (
+          <div style={styles.joinedState}>
+            <p style={styles.joinedText}>You&apos;re in! See you there.</p>
+            <button style={styles.addressBtn}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                <circle cx="12" cy="10" r="3" />
+              </svg>
+              Open in Maps
+            </button>
+          </div>
         )}
       </div>
     </div>
-  );
-}
-
-function InfoRow({ icon, label, value, muted }) {
-  return (
-    <div style={styles.infoRow}>
-      <div style={styles.infoIcon}>{icon}</div>
-      <div>
-        <p style={styles.infoLabel}>{label}</p>
-        <p style={{ ...styles.infoValue, color: muted ? "#B4B2A9" : "#2C2C2A" }}>{value}</p>
-      </div>
-    </div>
-  );
-}
-
-function Divider() {
-  return <div style={{ height: "1px", background: "#F1EFE8", margin: "4px 0" }} />;
-}
-
-function ClockIcon() {
-  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#888780" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>;
-}
-function PinIcon() {
-  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#888780" strokeWidth="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" /><circle cx="12" cy="9" r="2.5" /></svg>;
-}
-function PersonIcon() {
-  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#888780" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>;
-}
-function StarIcon() {
-  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#888780" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>;
+  )
 }
 
 const styles = {
-  screen: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
-  header: {
-    display: "flex", alignItems: "center", justifyContent: "space-between",
-    padding: "16px 20px", borderBottom: "1px solid #E0DDD5", background: "#F1EFE8",
+  screen: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    background: '#F1EFE8',
   },
-  backBtn: { background: "none", border: "none", cursor: "pointer", padding: "4px", display: "flex" },
-  headerTitle: { fontSize: "15px", fontWeight: 600, color: "#2C2C2A" },
-  body: { flex: 1, overflowY: "auto", padding: "20px 16px 16px", display: "flex", flexDirection: "column", gap: "12px" },
-  titleBlock: { display: "flex", flexDirection: "column", gap: "8px" },
-  titleRow: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" },
-  gameName: { fontSize: "22px", fontWeight: 700, color: "#2C2C2A", margin: 0, lineHeight: 1.2 },
-  formatBadge: { fontSize: "12px", fontWeight: 600, color: "#085041", background: "#E1F5EE", padding: "4px 12px", borderRadius: "20px", whiteSpace: "nowrap", flexShrink: 0 },
-  spotsBadge: { fontSize: "13px", fontWeight: 600, padding: "5px 12px", borderRadius: "20px", alignSelf: "flex-start" },
-  infoCard: { background: "white", borderRadius: "14px", padding: "4px 16px", border: "1px solid #E0DDD5" },
-  infoRow: { display: "flex", alignItems: "center", gap: "12px", padding: "12px 0" },
-  infoIcon: { width: "32px", height: "32px", background: "#F1EFE8", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
-  infoLabel: { fontSize: "11px", color: "#B4B2A9", fontWeight: 500, margin: "0 0 2px" },
-  infoValue: { fontSize: "14px", fontWeight: 500, margin: 0 },
-  noteCard: { background: "white", borderRadius: "14px", padding: "14px 16px", border: "1px solid #E0DDD5" },
-  noteLabel: { fontSize: "11px", color: "#B4B2A9", fontWeight: 500, margin: "0 0 6px" },
-  noteText: { fontSize: "14px", color: "#2C2C2A", margin: 0, lineHeight: 1.5 },
-  section: { display: "flex", flexDirection: "column", gap: "10px" },
-  sectionLabel: { fontSize: "12px", fontWeight: 600, color: "#888780", margin: 0, textTransform: "uppercase", letterSpacing: "0.5px" },
-  playerList: { display: "flex", flexDirection: "column", gap: "6px" },
-  playerChip: { display: "flex", alignItems: "center", gap: "10px", padding: "8px 12px", background: "white", borderRadius: "10px", border: "1px solid #E0DDD5" },
-  playerAvatar: { width: "28px", height: "28px", borderRadius: "50%", background: "#1D9E75", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: 700, flexShrink: 0 },
-  playerName: { fontSize: "14px", fontWeight: 500, color: "#2C2C2A" },
-  cta: { padding: "12px 16px 20px", background: "#F1EFE8", borderTop: "1px solid #E0DDD5" },
-  joinBtn: { width: "100%", background: "#1D9E75", color: "white", border: "none", borderRadius: "12px", padding: "16px", fontSize: "15px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" },
-  joinedState: { display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", padding: "16px" },
-  joinedText: { fontSize: "15px", fontWeight: 600, color: "#1D9E75" },
-};
+  header: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '12px 16px',
+    background: 'white',
+    borderBottom: '1px solid #E0DDD5',
+    flexShrink: 0,
+  },
+  backBtn: {
+    width: '40px',
+    height: '40px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '12px',
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+  },
+  headerTitle: {
+    fontSize: '16px',
+    fontWeight: '600',
+    color: '#2C2C2A',
+  },
+  headerSpacer: {
+    width: '40px',
+  },
+  content: {
+    flex: 1,
+    overflowY: 'auto',
+    padding: '20px 16px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '20px',
+  },
+  hero: {
+    background: 'white',
+    borderRadius: '16px',
+    padding: '20px',
+    border: '1px solid #E0DDD5',
+  },
+  heroTop: {
+    marginBottom: '12px',
+  },
+  gameName: {
+    fontSize: '22px',
+    fontWeight: '700',
+    letterSpacing: '-0.5px',
+    marginBottom: '8px',
+  },
+  format: {
+    fontSize: '12px',
+    fontWeight: '500',
+    color: '#7A7A72',
+    background: '#F1EFE8',
+    padding: '3px 8px',
+    borderRadius: '6px',
+  },
+  spotsBadge: {
+    display: 'inline-block',
+    fontSize: '12px',
+    fontWeight: '600',
+    padding: '4px 10px',
+    borderRadius: '100px',
+  },
+  spotsGreen: {
+    background: '#E1F5EE',
+    color: '#0A6B4E',
+  },
+  spotsAmber: {
+    background: '#FAEEDA',
+    color: '#9B5E00',
+  },
+  spotsRed: {
+    background: '#FCEBEB',
+    color: '#A02020',
+  },
+  section: {
+    background: 'white',
+    borderRadius: '16px',
+    padding: '20px',
+    border: '1px solid #E0DDD5',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '16px',
+  },
+  infoRow: {
+    display: 'flex',
+    gap: '12px',
+    alignItems: 'flex-start',
+  },
+  infoLabel: {
+    fontSize: '12px',
+    fontWeight: '500',
+    color: '#7A7A72',
+    marginBottom: '2px',
+  },
+  infoValue: {
+    fontSize: '15px',
+    fontWeight: '500',
+    color: '#2C2C2A',
+  },
+  address: {
+    fontSize: '13px',
+    color: '#555550',
+    marginTop: '4px',
+  },
+  sectionTitle: {
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#2C2C2A',
+    marginTop: '-4px',
+  },
+  note: {
+    fontSize: '14px',
+    color: '#555550',
+    lineHeight: '1.5',
+  },
+  playerList: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '8px',
+  },
+  playerChip: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    background: '#F1EFE8',
+    padding: '6px 10px 6px 6px',
+    borderRadius: '100px',
+  },
+  playerAvatar: {
+    width: '28px',
+    height: '28px',
+    borderRadius: '50%',
+    background: '#1D9E75',
+    color: 'white',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '12px',
+    fontWeight: '600',
+  },
+  playerName: {
+    fontSize: '13px',
+    fontWeight: '500',
+    color: '#2C2C2A',
+  },
+  hostBadge: {
+    fontSize: '10px',
+    fontWeight: '600',
+    color: '#085041',
+    background: '#E1F5EE',
+    padding: '2px 6px',
+    borderRadius: '4px',
+    marginLeft: '-2px',
+  },
+  joinBtn: {
+    width: '100%',
+    padding: '14px 0',
+    background: '#1D9E75',
+    color: 'white',
+    fontSize: '15px',
+    fontWeight: '600',
+    borderRadius: '12px',
+    border: 'none',
+    cursor: 'pointer',
+    marginTop: 'auto',
+  },
+  joinedState: {
+    background: '#E1F5EE',
+    borderRadius: '12px',
+    padding: '16px',
+    textAlign: 'center',
+    marginTop: 'auto',
+  },
+  joinedText: {
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#085041',
+    marginBottom: '12px',
+  },
+  addressBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '10px 16px',
+    background: '#085041',
+    color: 'white',
+    fontSize: '13px',
+    fontWeight: '600',
+    borderRadius: '8px',
+    border: 'none',
+    cursor: 'pointer',
+  },
+}

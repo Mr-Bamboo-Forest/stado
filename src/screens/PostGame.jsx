@@ -1,126 +1,263 @@
-import { useState } from "react";
+import { useState } from 'react'
 
-const formats = ["5-a-side", "6-a-side", "7-a-side", "11-a-side", "Futsal"];
+const FORMATS = ['5-a-side', '6-a-side', '7-a-side', '11-a-side']
+const SKILLS = ['Any level', 'Casual', 'Intermediate', 'Competitive']
 
-export default function PostGame() {
-  const [format, setFormat] = useState("5-a-side");
-  const [posted, setPosted] = useState(false);
+export default function PostGame({ onBack }) {
+  const [form, setForm] = useState({
+    name: '',
+    format: '5-a-side',
+    location: '',
+    date: '',
+    time: '',
+    spots: '10',
+    skill: 'Any level',
+    note: '',
+  })
 
-  if (posted) {
-    return (
-      <div style={styles.successScreen}>
-        <div style={styles.successIcon}>
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
-            <path d="M20 6L9 17l-5-5" />
-          </svg>
-        </div>
-        <h2 style={styles.successTitle}>Game posted</h2>
-        <p style={styles.successSub}>Players nearby will be notified. See you on the pitch.</p>
-      </div>
-    );
+  const handleChange = (field, value) => {
+    setForm((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    alert('Game posted! (Demo only)')
+    onBack()
   }
 
   return (
     <div style={styles.screen}>
-      <div style={styles.topBar}>
-        <span style={styles.wordmark}>Post a game</span>
-      </div>
+      <header style={styles.header}>
+        <button style={styles.closeBtn} onClick={onBack} aria-label="Close">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2C2C2A" strokeWidth="2" strokeLinecap="round">
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </button>
+        <span style={styles.headerTitle}>Post a game</span>
+        <div style={styles.headerSpacer} />
+      </header>
 
-      <div style={styles.body}>
-        <Field label="Game name">
-          <input style={styles.input} placeholder="e.g. South Bank Kick-around" />
-        </Field>
+      <form style={styles.form} onSubmit={handleSubmit}>
+        <div style={styles.field}>
+          <label style={styles.label}>Game name</label>
+          <input
+            style={styles.input}
+            type="text"
+            placeholder="e.g. South Bank Sunday Kickaround"
+            value={form.name}
+            onChange={(e) => handleChange('name', e.target.value)}
+            required
+          />
+        </div>
 
-        <Field label="Format">
+        <div style={styles.field}>
+          <label style={styles.label}>Format</label>
           <div style={styles.formatGrid}>
-            {formats.map((f) => (
+            {FORMATS.map((f) => (
               <button
                 key={f}
-                onClick={() => setFormat(f)}
-                style={{ ...styles.formatBtn, ...(format === f ? styles.formatBtnActive : {}) }}
+                type="button"
+                style={{
+                  ...styles.formatBtn,
+                  background: form.format === f ? '#085041' : 'white',
+                  color: form.format === f ? 'white' : '#2C2C2A',
+                  borderColor: form.format === f ? '#085041' : '#E0DDD5',
+                }}
+                onClick={() => handleChange('format', f)}
               >
                 {f}
               </button>
             ))}
           </div>
-        </Field>
-
-        <Field label="Location">
-          <input style={styles.input} placeholder="Park or street name" />
-        </Field>
-
-        <div style={styles.row}>
-          <Field label="Date" style={{ flex: 1 }}>
-            <input style={styles.input} type="date" />
-          </Field>
-          <Field label="Time" style={{ flex: 1 }}>
-            <input style={styles.input} type="time" />
-          </Field>
         </div>
 
-        <Field label="Max players">
-          <input style={styles.input} type="number" placeholder="10" min="2" max="30" />
-        </Field>
+        <div style={styles.row}>
+          <div style={styles.field}>
+            <label style={styles.label}>Date</label>
+            <input
+              style={{ ...styles.input, ...styles.inputSmall }}
+              type="date"
+              value={form.date}
+              onChange={(e) => handleChange('date', e.target.value)}
+              required
+            />
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Time</label>
+            <input
+              style={{ ...styles.input, ...styles.inputSmall }}
+              type="time"
+              value={form.time}
+              onChange={(e) => handleChange('time', e.target.value)}
+              required
+            />
+          </div>
+        </div>
 
-        <Field label="Note (optional)">
-          <textarea
-            style={{ ...styles.input, height: "80px", resize: "none" }}
-            placeholder="Anything players should know..."
+        <div style={styles.field}>
+          <label style={styles.label}>Location</label>
+          <input
+            style={styles.input}
+            type="text"
+            placeholder="Park or field name"
+            value={form.location}
+            onChange={(e) => handleChange('location', e.target.value)}
+            required
           />
-        </Field>
-      </div>
+        </div>
 
-      <div style={styles.cta}>
-        <button style={styles.postBtn} onClick={() => setPosted(true)}>
+        <div style={styles.row}>
+          <div style={styles.field}>
+            <label style={styles.label}>Total spots</label>
+            <select
+              style={{ ...styles.input, ...styles.inputSmall }}
+              value={form.spots}
+              onChange={(e) => handleChange('spots', e.target.value)}
+            >
+              {[6, 8, 10, 12, 14, 16, 18, 22].map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Skill level</label>
+            <select
+              style={{ ...styles.input, ...styles.inputSmall }}
+              value={form.skill}
+              onChange={(e) => handleChange('skill', e.target.value)}
+            >
+              {SKILLS.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div style={styles.field}>
+          <label style={styles.label}>Note (optional)</label>
+          <textarea
+            style={styles.textarea}
+            placeholder="Any extra info for players..."
+            value={form.note}
+            onChange={(e) => handleChange('note', e.target.value)}
+            rows={3}
+          />
+        </div>
+
+        <button style={styles.submitBtn} type="submit">
           Post game
         </button>
-      </div>
+      </form>
     </div>
-  );
-}
-
-function Field({ label, children, style }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "6px", ...style }}>
-      <label style={styles.label}>{label}</label>
-      {children}
-    </div>
-  );
+  )
 }
 
 const styles = {
-  screen: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
-  topBar: { padding: "18px 20px 14px", borderBottom: "1px solid #E0DDD5", background: "#F1EFE8" },
-  wordmark: { fontSize: "18px", fontWeight: 700, color: "#2C2C2A" },
-  body: { flex: 1, overflowY: "auto", padding: "20px 16px", display: "flex", flexDirection: "column", gap: "16px" },
-  label: { fontSize: "12px", fontWeight: 600, color: "#888780", textTransform: "uppercase", letterSpacing: "0.4px" },
+  screen: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    background: '#F1EFE8',
+  },
+  header: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '12px 16px',
+    background: 'white',
+    borderBottom: '1px solid #E0DDD5',
+    flexShrink: 0,
+  },
+  closeBtn: {
+    width: '40px',
+    height: '40px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '12px',
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+  },
+  headerTitle: {
+    fontSize: '16px',
+    fontWeight: '600',
+    color: '#2C2C2A',
+  },
+  headerSpacer: {
+    width: '40px',
+  },
+  form: {
+    flex: 1,
+    overflowY: 'auto',
+    padding: '20px 16px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '16px',
+  },
+  field: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+  },
+  label: {
+    fontSize: '13px',
+    fontWeight: '600',
+    color: '#2C2C2A',
+  },
   input: {
-    width: "100%", padding: "12px 14px", borderRadius: "10px", border: "1.5px solid #E0DDD5",
-    fontSize: "14px", color: "#2C2C2A", background: "white", fontFamily: "inherit",
-    boxSizing: "border-box", outline: "none",
+    width: '100%',
+    padding: '12px 14px',
+    fontSize: '15px',
+    background: 'white',
+    border: '1px solid #E0DDD5',
+    borderRadius: '10px',
+    color: '#2C2C2A',
+    outline: 'none',
   },
-  row: { display: "flex", gap: "12px" },
-  formatGrid: { display: "flex", flexWrap: "wrap", gap: "8px" },
+  inputSmall: {
+    width: 'auto',
+  },
+  textarea: {
+    width: '100%',
+    padding: '12px 14px',
+    fontSize: '15px',
+    background: 'white',
+    border: '1px solid #E0DDD5',
+    borderRadius: '10px',
+    color: '#2C2C2A',
+    outline: 'none',
+    resize: 'none',
+    fontFamily: 'inherit',
+  },
+  row: {
+    display: 'flex',
+    gap: '12px',
+  },
+  formatGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: '8px',
+  },
   formatBtn: {
-    padding: "8px 14px", borderRadius: "20px", border: "1.5px solid #E0DDD5",
-    fontSize: "13px", fontWeight: 500, cursor: "pointer", background: "white",
-    color: "#888780", fontFamily: "inherit",
+    padding: '10px 0',
+    fontSize: '14px',
+    fontWeight: '500',
+    borderRadius: '10px',
+    border: '1px solid',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
   },
-  formatBtnActive: { background: "#1D9E75", borderColor: "#1D9E75", color: "white" },
-  cta: { padding: "12px 16px 20px", background: "#F1EFE8", borderTop: "1px solid #E0DDD5" },
-  postBtn: {
-    width: "100%", background: "#1D9E75", color: "white", border: "none",
-    borderRadius: "12px", padding: "16px", fontSize: "15px", fontWeight: 700,
-    cursor: "pointer", fontFamily: "inherit",
+  submitBtn: {
+    width: '100%',
+    padding: '14px 0',
+    background: '#1D9E75',
+    color: 'white',
+    fontSize: '15px',
+    fontWeight: '600',
+    borderRadius: '12px',
+    border: 'none',
+    cursor: 'pointer',
+    marginTop: 'auto',
   },
-  successScreen: {
-    flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
-    justifyContent: "center", gap: "16px", padding: "40px",
-  },
-  successIcon: {
-    width: "72px", height: "72px", borderRadius: "50%", background: "#1D9E75",
-    display: "flex", alignItems: "center", justifyContent: "center",
-  },
-  successTitle: { fontSize: "24px", fontWeight: 700, color: "#2C2C2A", margin: 0 },
-  successSub: { fontSize: "15px", color: "#888780", textAlign: "center", margin: 0, lineHeight: 1.5 },
-};
+}
