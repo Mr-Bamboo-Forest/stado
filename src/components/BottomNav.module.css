@@ -1,0 +1,56 @@
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 10px 8px calc(10px + env(safe-area-inset-bottom, 0px));
+  background: var(--card-bg);
+  border-top: 1px solid var(--border);
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 16px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.1px;
+  border-radius: 12px;
+  transition: color 0.15s, background 0.15s;
+  min-width: 64px;
+}
+
+.item.active {
+  color: var(--green-dark);
+}
+
+.item:active {
+  background: var(--off-white);
+}
+
+.postBtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  color: var(--green);
+  transition: transform 0.15s, opacity 0.15s;
+  min-width: 64px;
+}
+
+.postBtn:active {
+  transform: scale(0.93);
+  opacity: 0.85;
+}
+
+.postLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--green);
+  letter-spacing: 0.1px;
+}
