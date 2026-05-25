@@ -1,8 +1,22 @@
-import { useState } from 'react'
-import { games } from '../data/games'
+import { useState, useEffect } from 'react'
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore'
+import { db } from '../firebase'
 
 export default function Discover({ onGameClick }) {
   const [filter, setFilter] = useState('Any Time')
+  const [games, setGames] = useState([])
+
+  useEffect(() => {
+    const q = query(collection(db, 'games'), orderBy('createdAt', 'desc'))
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const gamesData = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }))
+      setGames(gamesData)
+    })
+    return () => unsubscribe()
+  }, [])
 
   const filteredGames = games.filter((game) => {
     if (filter === 'Tonight') return game.date === 'Tonight'
@@ -63,7 +77,7 @@ export default function Discover({ onGameClick }) {
 }
 
 function GameCard({ game, onClick }) {
-  const spots = game.spotsRemaining
+  const spots = game.spotsRemaining || 0
   let spotsStyle = styles.spotsGreen
   if (spots >= 2 && spots <= 4) spotsStyle = styles.spotsAmber
   if (spots === 1) spotsStyle = styles.spotsRed
@@ -87,7 +101,7 @@ function GameCard({ game, onClick }) {
             <circle cx="6.5" cy="4.75" r="1.25" fill="#7A7A72" />
           </svg>
           <span style={styles.metaText}>{game.location}</span>
-          <span style={styles.distance}>{game.distance}</span>
+          {game.distance && <span style={styles.distance}>{game.distance}</span>}
         </div>
         <div style={styles.metaRow}>
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="#7A7A72" strokeWidth="1.25">

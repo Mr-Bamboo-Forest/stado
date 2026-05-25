@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+import { db } from '../firebase'
 
 const FORMATS = ['5-a-side', '6-a-side', '7-a-side', '11-a-side']
 const SKILLS = ['Any level', 'Casual', 'Intermediate', 'Competitive']
@@ -14,15 +16,39 @@ export default function PostGame({ onBack }) {
     skill: 'Any level',
     note: '',
   })
+  const [submitting, setSubmitting] = useState(false)
 
   const handleChange = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    alert('Game posted! (Demo only)')
-    onBack()
+    setSubmitting(true)
+
+    try {
+      await addDoc(collection(db, 'games'), {
+        name: form.name,
+        format: form.format,
+        location: form.location,
+        distance: '',
+        date: form.date,
+        time: form.time,
+        spotsTotal: parseInt(form.spots, 10),
+        spotsRemaining: parseInt(form.spots, 10) - 1,
+        host: 'You',
+        skill: form.skill,
+        note: form.note || '',
+        players: ['You'],
+        createdAt: serverTimestamp(),
+      })
+      onBack()
+    } catch (error) {
+      console.error('Error adding game:', error)
+      alert('Failed to post game. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -47,6 +73,7 @@ export default function PostGame({ onBack }) {
             value={form.name}
             onChange={(e) => handleChange('name', e.target.value)}
             required
+            disabled={submitting}
           />
         </div>
 
@@ -64,6 +91,7 @@ export default function PostGame({ onBack }) {
                   borderColor: form.format === f ? '#085041' : '#E0DDD5',
                 }}
                 onClick={() => handleChange('format', f)}
+                disabled={submitting}
               >
                 {f}
               </button>
@@ -80,6 +108,7 @@ export default function PostGame({ onBack }) {
               value={form.date}
               onChange={(e) => handleChange('date', e.target.value)}
               required
+              disabled={submitting}
             />
           </div>
           <div style={styles.field}>
@@ -90,6 +119,7 @@ export default function PostGame({ onBack }) {
               value={form.time}
               onChange={(e) => handleChange('time', e.target.value)}
               required
+              disabled={submitting}
             />
           </div>
         </div>
@@ -103,6 +133,7 @@ export default function PostGame({ onBack }) {
             value={form.location}
             onChange={(e) => handleChange('location', e.target.value)}
             required
+            disabled={submitting}
           />
         </div>
 
@@ -113,6 +144,7 @@ export default function PostGame({ onBack }) {
               style={{ ...styles.input, ...styles.inputSmall }}
               value={form.spots}
               onChange={(e) => handleChange('spots', e.target.value)}
+              disabled={submitting}
             >
               {[6, 8, 10, 12, 14, 16, 18, 22].map((n) => (
                 <option key={n} value={n}>{n}</option>
@@ -125,6 +157,7 @@ export default function PostGame({ onBack }) {
               style={{ ...styles.input, ...styles.inputSmall }}
               value={form.skill}
               onChange={(e) => handleChange('skill', e.target.value)}
+              disabled={submitting}
             >
               {SKILLS.map((s) => (
                 <option key={s} value={s}>{s}</option>
@@ -141,11 +174,12 @@ export default function PostGame({ onBack }) {
             value={form.note}
             onChange={(e) => handleChange('note', e.target.value)}
             rows={3}
+            disabled={submitting}
           />
         </div>
 
-        <button style={styles.submitBtn} type="submit">
-          Post game
+        <button style={{ ...styles.submitBtn, opacity: submitting ? 0.7 : 1 }} type="submit" disabled={submitting}>
+          {submitting ? 'Posting...' : 'Post game'}
         </button>
       </form>
     </div>
