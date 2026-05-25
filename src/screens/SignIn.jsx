@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { signInWithPhoneNumber, RecaptchaVerifier } from 'firebase/auth'
 import { auth } from '../firebase'
 
@@ -9,7 +9,32 @@ export default function SignIn({ onSuccess }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const confirmationRef = useRef(null)
-  const recaptchaRef = useRef(null)
+  const recaptchaVerifierRef = useRef(null)
+  const [recaptchaReady, setRecaptchaReady] = useState(false)
+
+  useEffect(() => {
+    recaptchaVerifierRef.current = new RecaptchaVerifier(auth, 'recaptcha-container', {
+      size: 'invisible',
+      callback: () => {
+        setRecaptchaReady(true)
+      },
+      'expired-callback': () => {
+        setRecaptchaReady(false)
+      },
+    })
+
+    recaptchaVerifierRef.current.render().then(() => {
+      setRecaptchaReady(true)
+    }).catch((err) => {
+      console.error('reCAPTCHA render error:', err)
+    })
+
+    return () => {
+      if (recaptchaVerifierRef.current) {
+        recaptchaVerifierRef.current.clear()
+      }
+    }
+  }, [])
 
   const formatPhone = (value) => {
     const digits = value.replace(/\D/g, '')
@@ -25,16 +50,17 @@ export default function SignIn({ onSuccess }) {
     setError('')
 
     try {
-      if (recaptchaRef.current) {
-        recaptchaRef.current.clear()
+      const formattedPhone = formatPhone(phone)
+
+      if (!recaptchaVerifierRef.current) {
+        throw new Error('reCAPTCHA not initialized')
       }
 
-      recaptchaRef.current = new RecaptchaVerifier(auth, 'recaptcha-container', {
-        size: 'invisible',
-      })
-
-      const formattedPhone = formatPhone(phone)
-      const confirmation = await signInWithPhoneNumber(auth, formattedPhone, recaptchaRef.current)
+      const confirmation = await signInWithPhoneNumber(
+        auth,
+        formattedPhone,
+        recaptchaVerifierRef.current
+      )
       confirmationRef.current = confirmation
       setStep('code')
     } catch (err) {
@@ -43,8 +69,14 @@ export default function SignIn({ onSuccess }) {
         setError('Please enter a valid Australian phone number')
       } else if (err.code === 'auth/too-many-requests') {
         setError('Too many attempts. Please try again later.')
+      } else if (err.message?.includes('reCAPTCHA')) {
+        setError('Security check failed. Please refresh and try again.')
       } else {
         setError('Failed to send code. Please try again.')
+      }
+
+      if (recaptchaVerifierRef.current) {
+        recaptchaVerifierRef.current.render()
       }
     } finally {
       setLoading(false)
@@ -103,7 +135,11 @@ export default function SignIn({ onSuccess }) {
               />
             </div>
             {error && <p style={styles.error}>{error}</p>}
-            <button style={{ ...styles.button, opacity: loading ? 0.7 : 1 }} type="submit" disabled={loading}>
+            <button
+              style={{ ...styles.button, opacity: loading || !recaptchaReady ? 0.7 : 1 }}
+              type="submit"
+              disabled={loading || !recaptchaReady}
+            >
               {loading ? 'Sending...' : 'Send code'}
             </button>
           </form>
