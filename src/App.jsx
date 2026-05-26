@@ -4,6 +4,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { auth, db } from './firebase'
 import SignIn from './screens/SignIn'
 import Onboarding from './screens/Onboarding'
+import FirstTimeOnboarding from './screens/FirstTimeOnboarding'
 import Discover from './screens/Discover'
 import GameDetail from './screens/GameDetail'
 import PostGame from './screens/PostGame'
@@ -18,8 +19,17 @@ export default function App() {
   const [discoverKey, setDiscoverKey] = useState(0)
   const [showAuthPrompt, setShowAuthPrompt] = useState(false)
   const [pendingAction, setPendingAction] = useState(null)
+  const [hasSeenOnboarding, setHasSeenOnboarding] = useState(false)
+  const [checkingOnboarding, setCheckingOnboarding] = useState(true)
 
   const isGuest = user && user.isAnonymous
+
+  // Check if user has seen first-time onboarding
+  useEffect(() => {
+    const onboardingSeen = localStorage.getItem('stado_onboarding_seen')
+    setHasSeenOnboarding(!!onboardingSeen)
+    setCheckingOnboarding(false)
+  }, [])
 
   useEffect(() => {
     // Timeout fallback — if auth hangs for 6 seconds, stop loading
@@ -117,6 +127,36 @@ export default function App() {
     setShowAuthPrompt(false)
     setPendingAction(null)
     await signOut(auth)
+  }
+
+  const handleFirstTimeOnboardingComplete = () => {
+    localStorage.setItem('stado_onboarding_seen', 'true')
+    setHasSeenOnboarding(true)
+  }
+
+  // Show loading state while checking for first-time onboarding
+  if (checkingOnboarding) {
+    return (
+      <div style={styles.loading}>
+        <span style={styles.wordmark}>stado</span>
+        <div style={styles.loadingDots}>
+          <span style={{...styles.dot, animationDelay: '0s'}} />
+          <span style={{...styles.dot, animationDelay: '0.2s'}} />
+          <span style={{...styles.dot, animationDelay: '0.4s'}} />
+        </div>
+        <style>{`
+          @keyframes pulse {
+            0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
+            40% { opacity: 1; transform: scale(1); }
+          }
+        `}</style>
+      </div>
+    )
+  }
+
+  // Show first-time onboarding if user hasn't seen it yet
+  if (!hasSeenOnboarding) {
+    return <FirstTimeOnboarding onComplete={handleFirstTimeOnboardingComplete} />
   }
 
   if (loading) {
