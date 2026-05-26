@@ -152,13 +152,16 @@ export default function Discover({ onGameClick, userData, onJoinWithCode, onProf
     return parseInt(distanceFilter)
   }
 
-  const gamesWithDistance = games
-    .map((game) => ({
-      ...game,
-      distance: getGameDistance(game),
-    }))
-    .filter((game) => game.distance <= getDistanceLimit())
-    .sort((a, b) => a.distance - b.distance)
+const gamesWithDistance = games
+  .map((game) => ({
+    ...game,
+    distance: getGameDistance(game),
+  }))
+  .filter((game) => {
+    if (showMyGames) return game.host === userData?.name
+    return game.distance <= getDistanceLimit()
+  })
+  .sort((a, b) => a.distance - b.distance)
 
   const getPinColor = (spotsRemaining) => {
     if (spotsRemaining === 1) return '#DC2626'
@@ -313,12 +316,20 @@ export default function Discover({ onGameClick, userData, onJoinWithCode, onProf
                   </button>
                 ))}
               </div>
-              <button
-                style={styles.codeBtn}
-                onClick={() => setShowJoinModal(true)}
-              >
-                Join with code
-              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  style={styles.codeBtn}
+                  onClick={() => setShowJoinModal(true)}
+                >
+                  Join with code
+                </button>
+                <button
+                  style={{ ...styles.codeBtn, background: '#F1EFE8', color: '#085041' }}
+                  onClick={() => setShowMyGames((prev) => !prev)}
+                >
+                  {showMyGames ? 'All games' : 'My games'}
+                </button>
+              </div>
             </div>
 
             <div style={styles.list}>
