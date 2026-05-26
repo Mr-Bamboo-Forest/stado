@@ -414,18 +414,18 @@ const gamesWithDistance = games
                   </button>
                 ))}
               </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div style={styles.viewToggle}>
                 <button
-                  style={styles.codeBtn}
-                  onClick={() => setShowJoinModal(true)}
+                  style={{...styles.toggleBtn, ...(showMyGames ? {} : styles.toggleBtnActive)}}
+                  onClick={() => setShowMyGames(false)}
                 >
-                  Join with code
+                  All games
                 </button>
                 <button
-                  style={{ ...styles.codeBtn, background: '#F1EFE8', color: '#085041' }}
-                  onClick={() => setShowMyGames((prev) => !prev)}
+                  style={{...styles.toggleBtn, ...(showMyGames ? styles.toggleBtnActive : {})}}
+                  onClick={() => setShowMyGames(true)}
                 >
-                  {showMyGames ? 'All games' : 'My games'}
+                  My games
                 </button>
               </div>
             </div>
