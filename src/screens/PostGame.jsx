@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { collection, addDoc, serverTimestamp, increment, doc, updateDoc } from 'firebase/firestore'
-import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
+import { collection, addDoc, increment, doc, updateDoc } from 'firebase/firestore'
+import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { db } from '../firebase'
@@ -23,6 +23,14 @@ function LocationPicker({ position, setPosition }) {
     },
   })
   return position ? <Marker position={position} /> : null
+}
+
+function MapController({ center }) {
+  const map = useMap()
+  useEffect(() => {
+    if (center) map.setView(center, 14)
+  }, [center, map])
+  return null
 }
 
 export default function PostGame({ onBack, currentUser, userData }) {
@@ -58,7 +66,9 @@ export default function PostGame({ onBack, currentUser, userData }) {
     for (let i = 0; i < 6; i++) code += chars.charAt(Math.floor(Math.random() * chars.length))
     return code
   }
+
   const isFormValid = !!(form.name.trim() && form.date && form.time && form.location && form.lat && form.lng)
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!isFormValid) return
@@ -202,14 +212,15 @@ export default function PostGame({ onBack, currentUser, userData }) {
         </div>
 
         <div style={styles.field}>
-          <label style={styles.label}>Pin location on map</label>
-          <p style={styles.hint}>Tap the map to set exact location <span style={styles.required}>* Required</span></p>
+          <label style={styles.label}>Pin location on map <span style={styles.required}>* Required</span></label>
+          <p style={styles.hint}>Tap the map to set exact location</p>
           <div style={styles.mapContainer}>
             <MapContainer center={BRISBANE_CENTER} zoom={13} style={styles.map} scrollWheelZoom={false}>
               <TileLayer
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
+              <MapController center={mapPosition} />
               <LocationPicker position={mapPosition} setPosition={setMapPosition} />
             </MapContainer>
           </div>
@@ -309,5 +320,5 @@ const styles = {
   copyBtn: { width: '100%', maxWidth: '280px', padding: '14px', background: '#085041', color: 'white', fontSize: '15px', fontWeight: '600', borderRadius: '12px', border: 'none', cursor: 'pointer' },
   whatsappBtn: { width: '100%', maxWidth: '280px', padding: '14px', background: '#25D366', color: 'white', fontSize: '15px', fontWeight: '600', borderRadius: '12px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' },
   doneBtn: { background: 'none', border: 'none', color: '#7A7A72', fontSize: '15px', fontWeight: '500', cursor: 'pointer', padding: '8px', textDecoration: 'underline', textDecorationColor: '#C9C6BC' },
-  required: { fontSize: '11px',  fontWeight: '600',  color: '#D63D3D',  marginLeft: '4px',},
+  required: { fontSize: '11px', fontWeight: '600', color: '#D63D3D', marginLeft: '4px' },
 }
