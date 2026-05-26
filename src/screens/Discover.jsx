@@ -109,6 +109,7 @@ export default function Discover({ onGameClick, userData, onJoinWithCode, onProf
   const [showJoinModal, setShowJoinModal] = useState(false)
   const [joinCodeInput, setJoinCodeInput] = useState('')
   const [joinCodeValid, setJoinCodeValid] = useState(null)
+  const [showMyGames, setShowMyGames] = useState(false)
 
   useEffect(() => {
     const q = query(collection(db, 'games'), orderBy('createdAt', 'desc'))
