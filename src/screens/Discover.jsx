@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { collection, onSnapshot, query, orderBy, where, getDocs } from 'firebase/firestore'
+import { collection, onSnapshot, query, orderBy, where, getDocs, doc, deleteDoc } from 'firebase/firestore'
+import { getAuth } from 'firebase/auth'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -111,10 +112,12 @@ export default function Discover({ onGameClick, userData, onJoinWithCode, onProf
   const [joinCodeValid, setJoinCodeValid] = useState(null)
   const [showMyGames, setShowMyGames] = useState(false)
   const [nearbyAlert, setNearbyAlert] = useState('')
+  const [deletingGameId, setDeletingGameId] = useState(null)
   const userCoordsRef = useRef(userCoords)
   const prevGameIdsRef = useRef([])
   const initialLoadRef = useRef(true)
   const nearbyAlertTimerRef = useRef(null)
+  const auth = getAuth()
 
   useEffect(() => {
     const q = query(collection(db, 'games'), orderBy('createdAt', 'desc'))
@@ -233,6 +236,48 @@ const gamesWithDistance = games
       setShowJoinModal(false)
       setJoinCodeInput('')
       setJoinCodeValid(null)
+    }
+  }
+
+  const sendGameDeletedNotification = async (game) => {
+    if (Notification.permission !== 'granted') return
+
+    const players = game.players || []
+    const currentUserUid = auth.currentUser?.uid
+
+    for (const player of players) {
+      const playerUid = typeof player === 'string' ? player : player?.uid
+      if (playerUid && playerUid !== currentUserUid) {
+        new Notification('Game Cancelled', {
+          body: `"${game.name}" has been cancelled by the host.`,
+          tag: `game-deleted-${game.id}`,
+        })
+      }
+    }
+  }
+
+  const handleDeleteGame = async (game, e) => {
+    e.stopPropagation()
+
+    const currentUser = auth.currentUser
+    if (!currentUser || game.hostUid !== currentUser.uid) {
+      alert('Only the host can delete this game.')
+      return
+    }
+
+    if (!window.confirm(`Are you sure you want to delete "${game.name}"? All players will be notified.`)) {
+      return
+    }
+
+    setDeletingGameId(game.id)
+    try {
+      await sendGameDeletedNotification(game)
+      await deleteDoc(doc(db, 'games', game.id))
+    } catch (err) {
+      console.error('Error deleting game:', err)
+      alert('Failed to delete game. Please try again.')
+    } finally {
+      setDeletingGameId(null)
     }
   }
 
@@ -399,6 +444,9 @@ const gamesWithDistance = games
                     distance={formatDistance(game.distance)}
                     formattedDate={formatDate(game.date, game.time)}
                     onClick={() => onGameClick(game)}
+                    isHost={game.hostUid === auth.currentUser?.uid}
+                    onDelete={handleDeleteGame}
+                    isDeleting={deletingGameId === game.id}
                   />
                 ))
               )}
@@ -462,7 +510,7 @@ const gamesWithDistance = games
   )
 }
 
-function GameCard({ game, distance, formattedDate, onClick }) {
+function GameCard({ game, distance, formattedDate, onClick, isHost, onDelete, isDeleting }) {
   const spots = game.spotsRemaining || 0
   let spotsStyle = styles.spotsGreen
   if (spots >= 2 && spots <= 4) spotsStyle = styles.spotsAmber
@@ -504,7 +552,18 @@ function GameCard({ game, distance, formattedDate, onClick }) {
         </div>
       </div>
 
-      <button style={styles.viewBtn}>View game</button>
+      <div style={styles.cardFooter}>
+        <button style={styles.viewBtn}>View game</button>
+        {isHost && (
+          <button
+            style={{ ...styles.deleteBtn, opacity: isDeleting ? 0.7 : 1 }}
+            onClick={(e) => onDelete(game, e)}
+            disabled={isDeleting}
+          >
+            {isDeleting ? 'Deleting...' : 'Delete'}
+          </button>
+        )}
+      </div>
     </article>
   )
 }
@@ -777,10 +836,25 @@ const styles = {
     padding: '2px 7px',
     borderRadius: '5px',
   },
+  cardFooter: {
+    display: 'flex',
+    gap: '10px',
+  },
   viewBtn: {
-    width: '100%',
+    flex: 1,
     padding: '11px 0',
     background: '#1D9E75',
+    color: 'white',
+    fontSize: '14px',
+    fontWeight: '600',
+    borderRadius: '10px',
+    border: 'none',
+    cursor: 'pointer',
+  },
+  deleteBtn: {
+    flex: 1,
+    padding: '11px 0',
+    background: '#D63D3D',
     color: 'white',
     fontSize: '14px',
     fontWeight: '600',
