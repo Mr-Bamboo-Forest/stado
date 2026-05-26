@@ -422,8 +422,7 @@ function GameCard({ game, distance, formattedDate, onClick }) {
             <path d="M6.5 1a3.75 3.75 0 0 1 3.75 3.75c0 2.625-3.75 7.25-3.75 7.25S2.75 7.375 2.75 4.75A3.75 3.75 0 0 1 6.5 1Z" />
             <circle cx="6.5" cy="4.75" r="1.25" fill="#7A7A72" />
           </svg>
-          <span style={styles.metaText}>{game.location}</span>
-          <span style={styles.distance}>{distance}</span>
+          <span style={styles.metaText}>{distance} away</span>
         </div>
         <div style={styles.metaRow}>
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="#7A7A72" strokeWidth="1.25">
