@@ -110,7 +110,7 @@ export default function Discover({ onGameClick, userData, onJoinWithCode, onProf
   const [showJoinModal, setShowJoinModal] = useState(false)
   const [joinCodeInput, setJoinCodeInput] = useState('')
   const [joinCodeValid, setJoinCodeValid] = useState(null)
-  const [showMyGames, setShowMyGames] = useState(false)
+  const [gameFilter, setGameFilter] = useState('nearby')
   const [nearbyAlert, setNearbyAlert] = useState('')
   const [deletingGameId, setDeletingGameId] = useState(null)
   const userCoordsRef = useRef(userCoords)
@@ -200,22 +200,26 @@ export default function Discover({ onGameClick, userData, onJoinWithCode, onProf
     return parseInt(distanceFilter)
   }
 
+const currentUid = auth.currentUser?.uid
+const getPinColor = (spotsRemaining) => {
+  if (spotsRemaining === 1) return '#DC2626'
+  if (spotsRemaining >= 2 && spotsRemaining <= 4) return '#F59E0B'
+  return '#1D9E75'
+}
 const gamesWithDistance = games
   .map((game) => ({
     ...game,
     distance: getGameDistance(game),
   }))
   .filter((game) => {
-    if (showMyGames) return game.hostUid === auth.currentUser?.uid
+    if (gameFilter === 'hosting') return game.hostUid === currentUid
+    if (gameFilter === 'joined') {
+      const playerUids = (game.players || []).map(p => typeof p === 'string' ? p : p?.uid)
+      return playerUids.includes(currentUid) && game.hostUid !== currentUid
+    }
     return game.distance <= getDistanceLimit()
   })
   .sort((a, b) => a.distance - b.distance)
-
-  const getPinColor = (spotsRemaining) => {
-    if (spotsRemaining === 1) return '#DC2626'
-    if (spotsRemaining >= 2 && spotsRemaining <= 4) return '#F59E0B'
-    return '#1D9E75'
-  }
 
   const handleJoinWithCode = async () => {
     if (joinCodeInput.length !== 6) {
@@ -397,60 +401,73 @@ const gamesWithDistance = games
           </div>
         ) : (
           <>
-            <div style={styles.filters}>
-              <div style={styles.distanceFilters}>
-                {DISTANCE_FILTERS.map((d) => (
-                  <button
-                    key={d}
-                    style={{
-                      ...styles.chip,
-                      background: distanceFilter === d ? '#085041' : 'white',
-                      color: distanceFilter === d ? 'white' : '#555550',
-                      borderColor: distanceFilter === d ? '#085041' : '#E0DDD5',
-                    }}
-                    onClick={() => setDistanceFilter(d)}
-                  >
-                    {d}
-                  </button>
-                ))}
-              </div>
-              <div style={styles.viewToggle}>
+          <div style={styles.filters}>
+            <div style={styles.distanceFilters}>
+              {DISTANCE_FILTERS.map((d) => (
                 <button
-                  style={{...styles.toggleBtn, ...(showMyGames ? {} : styles.toggleBtnActive)}}
-                  onClick={() => setShowMyGames(false)}
+                  key={d}
+                  style={{
+                    ...styles.chip,
+                    background: distanceFilter === d && gameFilter === 'nearby' ? '#085041' : 'white',
+                    color: distanceFilter === d && gameFilter === 'nearby' ? 'white' : '#555550',
+                    borderColor: distanceFilter === d && gameFilter === 'nearby' ? '#085041' : '#E0DDD5',
+                  }}
+                  onClick={() => { setDistanceFilter(d); setGameFilter('nearby') }}
                 >
-                  All games
+                  {d}
                 </button>
-                <button
-                  style={{...styles.toggleBtn, ...(showMyGames ? styles.toggleBtnActive : {})}}
-                  onClick={() => setShowMyGames(true)}
-                >
-                  My games
-                </button>
-              </div>
+              ))}
             </div>
+            <div style={styles.gameFilterRow}>
+              <button
+                style={{...styles.gameFilterBtn, ...(gameFilter === 'nearby' ? styles.gameFilterBtnActive : {})}}
+                onClick={() => setGameFilter('nearby')}
+              >
+                Nearby
+              </button>
+              <button
+                style={{...styles.gameFilterBtn, ...(gameFilter === 'hosting' ? styles.gameFilterBtnActive : {})}}
+                onClick={() => setGameFilter('hosting')}
+              >
+                Hosting
+              </button>
+              <button
+                style={{...styles.gameFilterBtn, ...(gameFilter === 'joined' ? styles.gameFilterBtnActive : {})}}
+                onClick={() => setGameFilter('joined')}
+              >
+                Joined
+              </button>
+              <button style={styles.codeBtn} onClick={() => setShowJoinModal(true)}>
+                Join with code
+              </button>
+            </div>
+          </div>
 
-            <div style={styles.list}>
-              {gamesWithDistance.length === 0 ? (
-                <div style={styles.empty}>
-                  <p style={styles.emptyText}>No games nearby</p>
-                  <p style={styles.emptyHint}>Try expanding your search radius</p>
-                </div>
-              ) : (
-                gamesWithDistance.map((game) => (
-                  <GameCard
-                    key={game.id}
-                    game={game}
-                    distance={formatDistance(game.distance)}
-                    formattedDate={formatDate(game.date, game.time)}
-                    onClick={() => onGameClick(game)}
-                    isHost={game.hostUid === auth.currentUser?.uid}
-                    onDelete={handleDeleteGame}
-                    isDeleting={deletingGameId === game.id}
-                  />
-                ))
-              )}
-            </div>
+          <div style={styles.list}>
+            {gamesWithDistance.length === 0 ? (
+              <div style={styles.empty}>
+                <p style={styles.emptyText}>
+                  {gameFilter === 'hosting' ? 'No hosted games' : gameFilter === 'joined' ? 'No joined games' : 'No games nearby'}
+                </p>
+                <p style={styles.emptyHint}>
+                  {gameFilter === 'hosting' ? 'Post a game to see it here' : gameFilter === 'joined' ? 'Join a game to see it here' : 'Try expanding your search radius'}
+                </p>
+              </div>
+            ) : (
+              gamesWithDistance.map((game) => (
+                <GameCard
+                  key={game.id}
+                  game={game}
+                  distance={formatDistance(game.distance)}
+                  formattedDate={formatDate(game.date, game.time)}
+                  onClick={() => onGameClick(game)}
+                  isHost={game.hostUid === auth.currentUser?.uid}
+                  onDelete={handleDeleteGame}
+                  isDeleting={deletingGameId === game.id}
+                />
+              ))
+            )}
+          </div>
           </>
         )}
       </div>
@@ -969,5 +986,26 @@ const styles = {
     borderRadius: '10px',
     border: 'none',
     cursor: 'pointer',
+  },
+    gameFilterRow: {
+    display: 'flex',
+    gap: '8px',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+  },
+  gameFilterBtn: {
+    padding: '8px 14px',
+    borderRadius: '100px',
+    fontSize: '13px',
+    fontWeight: '600',
+    border: '1.5px solid #E0DDD5',
+    background: 'white',
+    color: '#555550',
+    cursor: 'pointer',
+  },
+  gameFilterBtnActive: {
+    background: '#1D9E75',
+    color: 'white',
+    borderColor: '#1D9E75',
   },
 }
