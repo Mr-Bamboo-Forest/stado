@@ -243,7 +243,7 @@ const styles = {
   },
   container: { flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', minHeight: '100vh', paddingBottom: '84px' },
   bottomNav: {
-    position: 'fixed', left: 0, right: 0, bottom: 0,
+    position: 'absolute', left: 0, right: 0, bottom: 0,
     display: 'flex', alignItems: 'center', justifyContent: 'space-around',
     background: 'white', borderTop: '1px solid #E0DDD5',
     padding: '12px 8px calc(12px + env(safe-area-inset-bottom))', zIndex: 50,
