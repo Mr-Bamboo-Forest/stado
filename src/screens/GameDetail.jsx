@@ -1,12 +1,99 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { doc, updateDoc, increment, getDoc } from 'firebase/firestore'
+import { db } from '../firebase'
 
-export default function GameDetail({ game, onBack }) {
+export default function GameDetail({ game, onBack, currentUser, userData, onJoined, onRequireAuth }) {
   const [joined, setJoined] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (game.players && currentUser?.uid) {
+      const playerUids = game.players.map(p => typeof p === 'string' ? p : p?.uid)
+      setJoined(playerUids.includes(currentUser.uid))
+    }
+  }, [game.players, currentUser])
 
   const spots = game.spotsRemaining
   let spotsStyle = styles.spotsGreen
   if (spots >= 2 && spots <= 4) spotsStyle = styles.spotsAmber
   if (spots === 1) spotsStyle = styles.spotsRed
+
+  const handleJoin = async () => {
+    if (!currentUser || !game?.id) return
+
+    if (currentUser.isAnonymous && onRequireAuth) {
+      const canProceed = onRequireAuth()
+      if (!canProceed) return
+    }
+
+    setLoading(true)
+    try {
+      const playerName = userData?.name || currentUser?.displayName || 'Player'
+      const playerPhoto = userData?.photoURL || currentUser?.photoURL || null
+
+      await updateDoc(doc(db, 'games', game.id), {
+        spotsRemaining: increment(-1),
+        players: [...(game.players || []), {
+          uid: currentUser.uid,
+          name: playerName,
+          photoURL: playerPhoto,
+        }],
+      })
+
+      await updateDoc(doc(db, 'users', currentUser.uid), {
+        gamesAttended: increment(1),
+      })
+
+      setJoined(true)
+      onJoined()
+    } catch (err) {
+      console.error('Error joining game:', err)
+      alert('Failed to join game. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const openMaps = () => {
+    if (game.lat && game.lng) {
+      window.open(`https://maps.google.com/?q=${game.lat},${game.lng}`, '_blank')
+    }
+  }
+
+  const formatDate = (dateStr, timeStr) => {
+    if (!dateStr) return ''
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const tomorrow = new Date(today)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    const date = new Date(dateStr + 'T00:00:00')
+    date.setHours(0, 0, 0, 0)
+
+    const isToday = date.getTime() === today.getTime()
+    const isTomorrow = date.getTime() === tomorrow.getTime()
+
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+    const timeFormatted = timeStr
+      ? new Date(`2000-01-01T${timeStr}`).toLocaleTimeString('en-US', {
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+        })
+      : ''
+
+    if (isToday) {
+      return `Tonight · ${timeFormatted}`
+    } else if (isTomorrow) {
+      return `Tomorrow · ${timeFormatted}`
+    } else {
+      const dayName = dayNames[date.getDay()]
+      const day = date.getDate()
+      const month = monthNames[date.getMonth()]
+      return `${dayName} ${day} ${month} · ${timeFormatted}`
+    }
+  }
 
   return (
     <div style={styles.screen}>
@@ -40,7 +127,9 @@ export default function GameDetail({ game, onBack }) {
             <div>
               <p style={styles.infoLabel}>Location</p>
               <p style={styles.infoValue}>{game.location}</p>
-              {joined && <p style={styles.address}>{game.address}</p>}
+              {joined && game.lat && game.lng && (
+                <p style={styles.address}>Lat: {game.lat.toFixed(4)}, Lng: {game.lng.toFixed(4)}</p>
+              )}
             </div>
           </div>
           <div style={styles.infoRow}>
@@ -50,7 +139,7 @@ export default function GameDetail({ game, onBack }) {
             </svg>
             <div>
               <p style={styles.infoLabel}>Time</p>
-              <p style={styles.infoValue}>{game.date} {game.time}</p>
+              <p style={styles.infoValue}>{formatDate(game.date, game.time)}</p>
             </div>
           </div>
           <div style={styles.infoRow}>
@@ -74,36 +163,62 @@ export default function GameDetail({ game, onBack }) {
           </div>
         </div>
 
-        <div style={styles.section}>
-          <p style={styles.sectionTitle}>About</p>
-          <p style={styles.note}>{game.note}</p>
-        </div>
+        {game.note && (
+          <div style={styles.section}>
+            <p style={styles.sectionTitle}>About</p>
+            <p style={styles.note}>{game.note}</p>
+          </div>
+        )}
 
         <div style={styles.section}>
-          <p style={styles.sectionTitle}>Players ({game.players.length}/{game.spotsTotal})</p>
+          <p style={styles.sectionTitle}>Players ({game.players?.length || 0}/{game.spotsTotal})</p>
           <div style={styles.playerList}>
-            {game.players.map((player, i) => (
-              <div key={i} style={styles.playerChip}>
-                <div style={styles.playerAvatar}>
-                  {player[0]}
+            {(game.players || []).slice(0, 8).map((player, i) => {
+              const playerObj = typeof player === 'string' ? { uid: player, name: player } : player
+              const isHost = playerObj.uid === game.hostUid
+              const isCurrentUser = playerObj.uid === currentUser?.uid
+              const displayName = isCurrentUser ? 'You' : playerObj.name || `Player ${i + 1}`
+              const initial = displayName.charAt(0)?.toUpperCase() || '?'
+
+              return (
+                <div key={i} style={styles.playerChip}>
+                  {playerObj.photoURL ? (
+                    <img src={playerObj.photoURL} alt={displayName} style={styles.playerAvatarImg} />
+                  ) : (
+                    <div style={styles.playerAvatar}>{initial}</div>
+                  )}
+                  <span style={styles.playerName}>{displayName}</span>
+                  {isHost && <span style={styles.hostBadge}>Host</span>}
                 </div>
-                <span style={styles.playerName}>{player}</span>
-                {player === game.host && (
-                  <span style={styles.hostBadge}>Host</span>
-                )}
-              </div>
-            ))}
+              )
+            })}
+            {(game.players?.length || 0) > 8 && (
+              <span style={styles.more}>
+                +{game.players.length - 8} more
+              </span>
+            )}
           </div>
         </div>
 
+        {game.joinCode && (
+          <div style={styles.codeSection}>
+            <p style={styles.codeLabel}>Share code</p>
+            <p style={styles.codeValue}>{game.joinCode}</p>
+          </div>
+        )}
+
         {!joined ? (
-          <button style={styles.joinBtn} onClick={() => setJoined(true)}>
-            Join game to see address
+          <button
+            style={{ ...styles.joinBtn, opacity: loading ? 0.7 : 1 }}
+            onClick={handleJoin}
+            disabled={loading || spots <= 0}
+          >
+            {loading ? 'Joining...' : spots <= 0 ? 'Game full' : 'Join game to see address'}
           </button>
         ) : (
           <div style={styles.joinedState}>
             <p style={styles.joinedText}>You&apos;re in! See you there.</p>
-            <button style={styles.addressBtn}>
+            <button style={styles.addressBtn} onClick={openMaps}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
                 <circle cx="12" cy="10" r="3" />
@@ -159,6 +274,7 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '20px',
+    paddingBottom: 'calc(20px + env(safe-area-inset-bottom))',
   },
   hero: {
     background: 'white',
@@ -268,6 +384,13 @@ const styles = {
     fontSize: '12px',
     fontWeight: '600',
   },
+  playerAvatarImg: {
+    width: '28px',
+    height: '28px',
+    borderRadius: '50%',
+    objectFit: 'cover',
+    fontWeight: '600',
+  },
   playerName: {
     fontSize: '13px',
     fontWeight: '500',
@@ -281,6 +404,29 @@ const styles = {
     padding: '2px 6px',
     borderRadius: '4px',
     marginLeft: '-2px',
+  },
+  more: {
+    fontSize: '12px',
+    color: '#7A7A72',
+    padding: '6px 12px',
+  },
+  codeSection: {
+    background: '#F1EFE8',
+    borderRadius: '16px',
+    padding: '16px',
+    textAlign: 'center',
+  },
+  codeLabel: {
+    fontSize: '12px',
+    fontWeight: '500',
+    color: '#7A7A72',
+    marginBottom: '8px',
+  },
+  codeValue: {
+    fontSize: '28px',
+    fontWeight: '700',
+    letterSpacing: '8px',
+    color: '#085041',
   },
   joinBtn: {
     width: '100%',

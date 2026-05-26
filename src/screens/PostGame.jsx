@@ -1,25 +1,89 @@
-import { useState } from 'react'
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+import { useState, useEffect } from 'react'
+import { collection, addDoc, serverTimestamp, increment, doc, updateDoc } from 'firebase/firestore'
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 import { db } from '../firebase'
+
+delete L.Icon.Default.prototype._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+})
 
 const FORMATS = ['5-a-side', '6-a-side', '7-a-side', '11-a-side']
 const SKILLS = ['Any level', 'Casual', 'Intermediate', 'Competitive']
 
-export default function PostGame({ onBack }) {
+const BRISBANE_CENTER = [-27.4698, 153.0251]
+
+function LocationPicker({ position, setPosition }) {
+  useMapEvents({
+    click(e) {
+      setPosition([e.latlng.lat, e.latlng.lng])
+    },
+  })
+
+  return position ? <Marker position={position} /> : null
+}
+
+export default function PostGame({ onBack, currentUser, userData }) {
   const [form, setForm] = useState({
     name: '',
     format: '5-a-side',
     location: '',
+    lat: null,
+    lng: null,
     date: '',
     time: '',
     spots: '10',
     skill: 'Any level',
     note: '',
+    isPublic: true,
+    joinCode: '',
   })
+  const [mapPosition, setMapPosition] = useState(BRISBANE_CENTER)
   const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (mapPosition) {
+      setForm((prev) => ({
+        ...prev,
+        lat: mapPosition[0],
+        lng: mapPosition[1],
+      }))
+    }
+  }, [mapPosition])
+
+  const getCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser')
+      return
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude
+        const lng = position.coords.longitude
+        setMapPosition([lat, lng])
+      },
+      () => {
+        alert('Unable to retrieve your location')
+      }
+    )
+  }
 
   const handleChange = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const generateJoinCode = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+    let code = ''
+    for (let i = 0; i < 6; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
+    return code
   }
 
   const handleSubmit = async (e) => {
@@ -27,21 +91,41 @@ export default function PostGame({ onBack }) {
     setSubmitting(true)
 
     try {
+      const joinCode = form.isPublic ? null : generateJoinCode()
+
+      const playerName = userData?.name || currentUser?.displayName || 'Host'
+      const playerPhoto = userData?.photoURL || currentUser?.photoURL || null
+
       await addDoc(collection(db, 'games'), {
         name: form.name,
         format: form.format,
         location: form.location,
+        lat: form.lat,
+        lng: form.lng,
         distance: '',
         date: form.date,
         time: form.time,
         spotsTotal: parseInt(form.spots, 10),
         spotsRemaining: parseInt(form.spots, 10) - 1,
-        host: 'You',
+        host: playerName,
+        hostUid: currentUser.uid,
+        hostPhotoURL: playerPhoto,
         skill: form.skill,
         note: form.note || '',
-        players: ['You'],
+        players: [{
+          uid: currentUser.uid,
+          name: playerName,
+          photoURL: playerPhoto,
+        }],
+        isPublic: form.isPublic,
+        joinCode,
         createdAt: serverTimestamp(),
       })
+
+      await updateDoc(doc(db, 'users', currentUser.uid), {
+        gamesHosted: increment(1),
+      })
+
       onBack()
     } catch (error) {
       console.error('Error adding game:', error)
@@ -125,16 +209,50 @@ export default function PostGame({ onBack }) {
         </div>
 
         <div style={styles.field}>
-          <label style={styles.label}>Location</label>
+          <div style={styles.locationHeader}>
+            <label style={styles.label}>Location</label>
+            <button
+              type="button"
+              style={styles.locationBtn}
+              onClick={getCurrentLocation}
+              disabled={submitting}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <circle cx="12" cy="12" r="3" />
+                <path d="M12 2v2M12 20v2M2 12h2M20 12h2" />
+              </svg>
+              Use current
+            </button>
+          </div>
           <input
             style={styles.input}
             type="text"
-            placeholder="Park or field name"
+            placeholder="Park or field name (e.g. South Bank Parklands)"
             value={form.location}
             onChange={(e) => handleChange('location', e.target.value)}
             required
             disabled={submitting}
           />
+        </div>
+
+        <div style={styles.field}>
+          <label style={styles.label}>Pin location on map</label>
+          <p style={styles.hint}>Tap the map to set exact location</p>
+          <div style={styles.mapContainer}>
+            <MapContainer
+              center={BRISBANE_CENTER}
+              zoom={13}
+              style={styles.map}
+              scrollWheelZoom={false}
+            >
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              <LocationPicker position={mapPosition} setPosition={setMapPosition} />
+            </MapContainer>
+          </div>
         </div>
 
         <div style={styles.row}>
@@ -164,6 +282,48 @@ export default function PostGame({ onBack }) {
               ))}
             </select>
           </div>
+        </div>
+
+        <div style={styles.field}>
+          <label style={styles.label}>Visibility</label>
+          <div style={styles.visibilityRow}>
+            <button
+              type="button"
+              style={{
+                ...styles.visibilityBtn,
+                background: form.isPublic ? '#E1F5EE' : 'white',
+                borderColor: form.isPublic ? '#1D9E75' : '#E0DDD5',
+              }}
+              onClick={() => handleChange('isPublic', true)}
+              disabled={submitting}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={form.isPublic ? '#1D9E75' : '#7A7A72'} strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              Public
+            </button>
+            <button
+              type="button"
+              style={{
+                ...styles.visibilityBtn,
+                background: !form.isPublic ? '#E1F5EE' : 'white',
+                borderColor: !form.isPublic ? '#1D9E75' : '#E0DDD5',
+              }}
+              onClick={() => handleChange('isPublic', false)}
+              disabled={submitting}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={!form.isPublic ? '#1D9E75' : '#7A7A72'} strokeWidth="2">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+              Private
+            </button>
+          </div>
+          {!form.isPublic && (
+            <p style={styles.hint}>Only people with your join code can see this game</p>
+          )}
         </div>
 
         <div style={styles.field}>
@@ -239,6 +399,11 @@ const styles = {
     fontWeight: '600',
     color: '#2C2C2A',
   },
+  hint: {
+    fontSize: '12px',
+    color: '#7A7A72',
+    marginTop: '-2px',
+  },
   input: {
     width: '100%',
     padding: '12px 14px',
@@ -281,6 +446,53 @@ const styles = {
     border: '1px solid',
     cursor: 'pointer',
     transition: 'all 0.15s ease',
+  },
+  locationHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  locationBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    fontSize: '12px',
+    fontWeight: '500',
+    color: '#1D9E75',
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    padding: '4px 8px',
+  },
+  mapContainer: {
+    width: '100%',
+    height: '200px',
+    borderRadius: '10px',
+    overflow: 'hidden',
+    border: '1px solid #E0DDD5',
+  },
+  map: {
+    height: '200px',
+    width: '100%',
+  },
+  visibilityRow: {
+    display: 'flex',
+    gap: '10px',
+  },
+  visibilityBtn: {
+    flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+    padding: '12px',
+    fontSize: '14px',
+    fontWeight: '500',
+    borderRadius: '10px',
+    border: '1px solid',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+    color: '#2C2C2A',
   },
   submitBtn: {
     width: '100%',
