@@ -1,9 +1,31 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { collection, addDoc, serverTimestamp, increment, doc, updateDoc } from 'firebase/firestore'
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 import { db } from '../firebase'
+
+delete L.Icon.Default.prototype._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+})
 
 const FORMATS = ['5-a-side', '6-a-side', '7-a-side', '11-a-side']
 const SKILLS = ['Any level', 'Casual', 'Intermediate', 'Competitive']
+
+const BRISBANE_CENTER = [-27.4698, 153.0251]
+
+function LocationPicker({ position, setPosition }) {
+  useMapEvents({
+    click(e) {
+      setPosition([e.latlng.lat, e.latlng.lng])
+    },
+  })
+
+  return position ? <Marker position={position} /> : null
+}
 
 export default function PostGame({ onBack, currentUser, userData }) {
   const [form, setForm] = useState({
@@ -20,69 +42,18 @@ export default function PostGame({ onBack, currentUser, userData }) {
     isPublic: true,
     joinCode: '',
   })
+  const [mapPosition, setMapPosition] = useState(BRISBANE_CENTER)
   const [submitting, setSubmitting] = useState(false)
-  const [useCurrentLocation, setUseCurrentLocation] = useState(false)
-  const mapRef = useRef(null)
-  const markerRef = useRef(null)
 
   useEffect(() => {
-    if (!window.google?.maps) {
-      const script = document.createElement('script')
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY}&libraries=places`
-      script.async = true
-      script.onload = initMap
-      document.head.appendChild(script)
-      return () => {
-        if (script.parentNode) {
-          script.parentNode.removeChild(script)
-        }
-      }
-    } else {
-      initMap()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const initMap = () => {
-    if (!mapRef.current || !window.google?.maps) return
-
-    const map = new window.google.maps.Map(mapRef.current, {
-      center: { lat: -27.4698, lng: 153.0251 },
-      zoom: 13,
-      styles: [
-        { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] },
-      ],
-    })
-
-    markerRef.current = new window.google.maps.Marker({
-      map,
-      position: { lat: -27.4698, lng: 153.0251 },
-      draggable: true,
-      title: 'Drag to set location',
-    })
-
-    map.addListener('click', (e) => {
-      const lat = e.latLng.lat()
-      const lng = e.latLng.lng()
-      markerRef.current.setPosition({ lat, lng })
-      setForm((prev) => ({ ...prev, lat, lng }))
-    })
-
-    markerRef.current.addListener('dragend', () => {
-      const pos = markerRef.current.getPosition()
+    if (mapPosition) {
       setForm((prev) => ({
         ...prev,
-        lat: pos.lat(),
-        lng: pos.lng(),
+        lat: mapPosition[0],
+        lng: mapPosition[1],
       }))
-    })
-
-    setForm((prev) => ({
-      ...prev,
-      lat: -27.4698,
-      lng: 153.0251,
-    }))
-  }
+    }
+  }, [mapPosition])
 
   const getCurrentLocation = () => {
     if (!navigator.geolocation) {
@@ -94,24 +65,7 @@ export default function PostGame({ onBack, currentUser, userData }) {
       (position) => {
         const lat = position.coords.latitude
         const lng = position.coords.longitude
-
-        if (window.google?.maps && mapRef.current) {
-          const map = new window.google.maps.Map(mapRef.current, {
-            center: { lat, lng },
-            zoom: 13,
-          })
-          if (markerRef.current) {
-            markerRef.current.setMap(null)
-          }
-          markerRef.current = new window.google.maps.Marker({
-            map,
-            position: { lat, lng },
-            draggable: true,
-          })
-        }
-
-        setForm((prev) => ({ ...prev, lat, lng }))
-        setUseCurrentLocation(true)
+        setMapPosition([lat, lng])
       },
       () => {
         alert('Unable to retrieve your location')
@@ -284,8 +238,21 @@ export default function PostGame({ onBack, currentUser, userData }) {
 
         <div style={styles.field}>
           <label style={styles.label}>Pin location on map</label>
-          <p style={styles.hint}>Tap or drag the marker to set exact location</p>
-          <div ref={mapRef} style={styles.map}></div>
+          <p style={styles.hint}>Tap the map to set exact location</p>
+          <div style={styles.mapContainer}>
+            <MapContainer
+              center={BRISBANE_CENTER}
+              zoom={13}
+              style={styles.map}
+              scrollWheelZoom={false}
+            >
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              <LocationPicker position={mapPosition} setPosition={setMapPosition} />
+            </MapContainer>
+          </div>
         </div>
 
         <div style={styles.row}>
@@ -497,12 +464,16 @@ const styles = {
     cursor: 'pointer',
     padding: '4px 8px',
   },
-  map: {
+  mapContainer: {
     width: '100%',
     height: '200px',
     borderRadius: '10px',
-    border: '1px solid #E0DDD5',
     overflow: 'hidden',
+    border: '1px solid #E0DDD5',
+  },
+  map: {
+    height: '200px',
+    width: '100%',
   },
   visibilityRow: {
     display: 'flex',
