@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { onAuthStateChanged, signOut } from 'firebase/auth'
-import { doc, getDoc, setDoc } from 'firebase/firestore'
+import { onAuthStateChanged } from 'firebase/auth'
+import { doc, getDoc } from 'firebase/firestore'
 import { auth, db } from './firebase'
 import SignIn from './screens/SignIn'
 import Onboarding from './screens/Onboarding'
@@ -11,184 +11,114 @@ import Profile from './screens/Profile'
 
 export default function App() {
   const [user, setUser] = useState(null)
-  const [userData, setUserData] = useState(null)
+  const [hasProfile, setHasProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [screen, setScreen] = useState('discover')
   const [selectedGame, setSelectedGame] = useState(null)
-  const [showAuthPrompt, setShowAuthPrompt] = useState(false)
-  const [pendingAction, setPendingAction] = useState(null)
 
-  const isGuest = user && user.isAnonymous
-
+  // Handle deep-link share URLs: /?game=GAME_ID
   useEffect(() => {
-    // Timeout fallback — if auth hangs for 6 seconds, stop loading
-    const timeout = setTimeout(() => {
-      setLoading(false)
-    }, 6000)
-
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      clearTimeout(timeout)
-      if (firebaseUser) {
-        setUser(firebaseUser)
-        try {
-          const userSnap = await getDoc(doc(db, 'users', firebaseUser.uid))
-          if (userSnap.exists()) {
-            setUserData(userSnap.data())
-          } else if (firebaseUser.isAnonymous) {
-            // Guests skip onboarding — set minimal userData so app doesn't hang
-            setUserData({ name: 'Guest', isGuest: true })
-          } else {
-            // No user doc yet — onboarding will handle it
-            setUserData(null)
-          }
-        } catch (err) {
-          console.error('Error fetching user doc:', err)
-          // On error, still proceed — don't hang
-          setUserData(null)
-        }
-      } else {
-        setUser(null)
-        setUserData(null)
-      }
-      setLoading(false)
-    })
-
-    return () => {
-      clearTimeout(timeout)
-      unsubscribe()
+    const params = new URLSearchParams(window.location.search)
+    const sharedGameId = params.get('game')
+    if (sharedGameId) {
+      // Store it and navigate after auth resolves
+      sessionStorage.setItem('pendingGameId', sharedGameId)
     }
   }, [])
 
-  const goToGame = (game) => { setSelectedGame(game); setScreen('detail') }
-  const goBack = () => { setSelectedGame(null); setScreen('discover') }
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        setUser(firebaseUser)
+        const profileSnap = await getDoc(doc(db, 'users', firebaseUser.uid))
+        setHasProfile(profileSnap.exists())
 
-  const handleSignInSuccess = () => setShowAuthPrompt(false)
-
-  const handleOnboardingComplete = async () => {
-    if (user) {
-      try {
-        const userSnap = await getDoc(doc(db, 'users', user.uid))
-        if (userSnap.exists()) setUserData(userSnap.data())
-      } catch (err) {
-        console.error('Error after onboarding:', err)
+        // Handle pending share link navigation
+        const pendingGameId = sessionStorage.getItem('pendingGameId')
+        if (pendingGameId) {
+          sessionStorage.removeItem('pendingGameId')
+          try {
+            const gameSnap = await getDoc(doc(db, 'games', pendingGameId))
+            if (gameSnap.exists()) {
+              setSelectedGame({ id: gameSnap.id, ...gameSnap.data() })
+              setScreen('detail')
+            }
+          } catch (e) {
+            console.error('Failed to load shared game:', e)
+          }
+        }
+      } else {
+        setUser(null)
+        setHasProfile(null)
       }
-    }
+      setLoading(false)
+    })
+    return () => unsubscribe()
+  }, [])
+
+  const goToGame = (game) => {
+    setSelectedGame(game)
+    setScreen('detail')
   }
 
-  const handleUpdateUserData = (newData) => setUserData(newData)
-
-  const handleGamePosted = async () => {
-    if (user) {
-      try {
-        const userSnap = await getDoc(doc(db, 'users', user.uid))
-        if (userSnap.exists()) setUserData(userSnap.data())
-      } catch (err) { console.error(err) }
-    }
+  const goBack = () => {
+    setSelectedGame(null)
     setScreen('discover')
   }
 
-  const handleGameJoined = async () => {
-    if (user) {
-      try {
-        const userSnap = await getDoc(doc(db, 'users', user.uid))
-        if (userSnap.exists()) setUserData(userSnap.data())
-      } catch (err) { console.error(err) }
-    }
+  // Called by Profile when user signs out
+  const handleSignOut = () => {
+    setUser(null)
+    setHasProfile(null)
+    setScreen('discover')
+    setSelectedGame(null)
   }
 
-  const handlePostClick = () => {
-    if (isGuest) { setPendingAction('post'); setShowAuthPrompt(true) }
-    else setScreen('post')
-  }
-
-  const handleJoinClick = () => {
-    if (isGuest) { setPendingAction('join'); setShowAuthPrompt(true); return false }
-    return true
-  }
-
-  const handleAuthPromptClose = async () => {
-    setShowAuthPrompt(false)
-    if (pendingAction === 'post') setScreen('post')
-    setPendingAction(null)
+  const handleOnboardingComplete = () => {
+    setHasProfile(true)
   }
 
   if (loading) {
     return (
       <div style={styles.loading}>
         <span style={styles.wordmark}>stado</span>
-        <div style={styles.loadingDots}>
-          <span style={{...styles.dot, animationDelay: '0s'}} />
-          <span style={{...styles.dot, animationDelay: '0.2s'}} />
-          <span style={{...styles.dot, animationDelay: '0.4s'}} />
-        </div>
-        <style>{`
-          @keyframes pulse {
-            0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
-            40% { opacity: 1; transform: scale(1); }
-          }
-        `}</style>
       </div>
     )
   }
 
-  if (!user) return <SignIn onSuccess={handleSignInSuccess} />
+  if (!user) {
+    return <SignIn onSuccess={() => {}} />
+  }
 
-  if (user && !user.isAnonymous && !userData) {
-    return <Onboarding onComplete={handleOnboardingComplete} user={user} />
+  if (!hasProfile) {
+    return <Onboarding onComplete={handleOnboardingComplete} />
   }
 
   return (
     <div style={styles.container}>
-      {screen === 'discover' && (
-        <Discover
-          onGameClick={goToGame}
-          userData={userData}
-          onJoinWithCode={(game) => { setSelectedGame(game); setScreen('detail') }}
-          onProfileClick={() => setScreen('profile')}
-        />
-      )}
+      {screen === 'discover' && <Discover onGameClick={goToGame} />}
       {screen === 'detail' && (
-        <GameDetail
-          game={selectedGame}
-          onBack={goBack}
-          currentUser={user}
-          userData={userData}
-          onJoined={handleGameJoined}
-          onRequireAuth={handleJoinClick}
-        />
+        <GameDetail game={selectedGame} onBack={goBack} currentUser={user} />
       )}
-      {screen === 'post' && (
-        <PostGame onBack={handleGamePosted} currentUser={user} userData={userData} />
-      )}
+      {screen === 'post' && <PostGame onBack={() => setScreen('discover')} />}
       {screen === 'profile' && (
-        <Profile
-          onBack={() => setScreen('discover')}
-          userData={userData}
-          onUpdateUser={handleUpdateUserData}
-        />
+        <Profile onSignOut={handleSignOut} />
       )}
 
       {screen !== 'detail' && (
         <nav style={styles.bottomNav}>
-          <NavItem label="Discover" active={screen === 'discover'} onClick={() => setScreen('discover')} />
-          <NavPostButton onClick={handlePostClick} />
-          <NavItem label="Profile" active={screen === 'profile'} onClick={() => setScreen('profile')} />
+          <NavItem
+            label="Discover"
+            active={screen === 'discover'}
+            onClick={() => setScreen('discover')}
+          />
+          <NavPostButton onClick={() => setScreen('post')} />
+          <NavItem
+            label="Profile"
+            active={screen === 'profile'}
+            onClick={() => setScreen('profile')}
+          />
         </nav>
-      )}
-
-      {showAuthPrompt && (
-        <div style={styles.authPromptOverlay}>
-          <div style={styles.authPromptModal}>
-            <h3 style={styles.authPromptTitle}>Sign in required</h3>
-            <p style={styles.authPromptMessage}>
-              {pendingAction === 'post' ? 'You need an account to post games.' : 'You need an account to join games.'}
-            </p>
-            <div style={styles.authPromptButtons}>
-              <button style={styles.authPromptCancel} onClick={() => { setShowAuthPrompt(false); setPendingAction(null) }}>Cancel</button>
-              <button style={styles.authPromptSignIn} onClick={handleAuthPromptClose}>Sign in</button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   )
@@ -196,14 +126,19 @@ export default function App() {
 
 function NavItem({ label, active, onClick }) {
   return (
-    <button style={{ ...styles.navItem, color: active ? '#1D9E75' : '#7A7A72' }} onClick={onClick}>
+    <button
+      style={{ ...styles.navItem, color: active ? '#1D9E75' : '#7A7A72' }}
+      onClick={onClick}
+    >
       {label === 'Discover' ? (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-          <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
+          <circle cx="11" cy="11" r="8" />
+          <path d="M21 21l-4.35-4.35" />
         </svg>
       ) : (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-          <circle cx="12" cy="8" r="4" /><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+          <circle cx="12" cy="8" r="4" />
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
         </svg>
       )}
       <span style={styles.navLabel}>{label}</span>
@@ -225,30 +160,60 @@ function NavPostButton({ onClick }) {
 
 const styles = {
   loading: {
-    minHeight: '100vh', display: 'flex', flexDirection: 'column',
-    alignItems: 'center', justifyContent: 'center', background: '#F1EFE8', gap: '24px',
+    flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#F1EFE8',
   },
-  wordmark: { fontSize: '32px', fontWeight: '700', letterSpacing: '-0.5px', color: '#085041' },
-  loadingDots: { display: 'flex', gap: '8px' },
-  dot: {
-    width: '8px', height: '8px', borderRadius: '50%', background: '#1D9E75',
-    animation: 'pulse 1.2s ease-in-out infinite',
+  wordmark: {
+    fontSize: '32px',
+    fontWeight: '700',
+    letterSpacing: '-0.5px',
+    color: '#085041',
   },
-  container: { flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', minHeight: '100vh' },
+  container: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    position: 'relative',
+  },
   bottomNav: {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-around',
-    background: 'white', borderTop: '1px solid #E0DDD5',
-    padding: '12px 8px calc(12px + env(safe-area-inset-bottom))', flexShrink: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    background: 'white',
+    borderTop: '1px solid #E0DDD5',
+    padding: '12px 8px 24px',
+    flexShrink: 0,
   },
-  navItem: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', flex: 1, background: 'none', border: 'none', cursor: 'pointer' },
-  navLabel: { fontSize: '11px', fontWeight: '500' },
-  postButton: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', flex: 1, background: 'none', border: 'none', cursor: 'pointer' },
-  postLabel: { fontSize: '11px', fontWeight: '600', color: '#1D9E75' },
-  authPromptOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', zIndex: 1000 },
-  authPromptModal: { background: 'white', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '320px' },
-  authPromptTitle: { fontSize: '18px', fontWeight: '600', color: '#2C2C2A', marginBottom: '12px', textAlign: 'center' },
-  authPromptMessage: { fontSize: '14px', color: '#7A7A72', textAlign: 'center', marginBottom: '20px', lineHeight: '1.4' },
-  authPromptButtons: { display: 'flex', gap: '12px' },
-  authPromptCancel: { flex: 1, padding: '12px', background: 'white', color: '#555550', fontSize: '15px', fontWeight: '600', borderRadius: '10px', border: '1px solid #E0DDD5', cursor: 'pointer' },
-  authPromptSignIn: { flex: 1, padding: '12px', background: '#1D9E75', color: 'white', fontSize: '15px', fontWeight: '600', borderRadius: '10px', border: 'none', cursor: 'pointer' },
+  navItem: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '4px',
+    flex: 1,
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+  },
+  navLabel: {
+    fontSize: '11px',
+    fontWeight: '500',
+  },
+  postButton: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '4px',
+    flex: 1,
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+  },
+  postLabel: {
+    fontSize: '11px',
+    fontWeight: '600',
+    color: '#1D9E75',
+  },
 }
