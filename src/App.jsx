@@ -108,6 +108,7 @@ export default function App() {
           onGameClick={goToGame}
           userData={userData}
           onJoinWithCode={goToGameDetail}
+          onProfileClick={() => setScreen('profile')}
         />
       )}
       {screen === 'detail' && (

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { collection, onSnapshot, query, orderBy, where, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
 
-export default function Discover({ onGameClick, userData, onJoinWithCode }) {
+export default function Discover({ onGameClick, userData, onJoinWithCode, onProfileClick }) {
   const [filter, setFilter] = useState('Any Time')
   const [games, setGames] = useState([])
   const [userCoords, setUserCoords] = useState(null)
@@ -134,7 +134,7 @@ export default function Discover({ onGameClick, userData, onJoinWithCode }) {
     <div style={styles.screen}>
       <header style={styles.header}>
         <span style={styles.wordmark}>stado</span>
-        <button style={styles.profileBtn} aria-label="Profile">
+        <button style={styles.profileBtn} aria-label="Profile" onClick={onProfileClick}>
           {userData?.photoURL ? (
             <img src={userData.photoURL} alt="Profile" style={styles.avatar} />
           ) : (

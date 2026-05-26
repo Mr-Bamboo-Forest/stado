@@ -28,14 +28,11 @@ export default function Profile({ onBack, userData, onUpdateUser }) {
     typeof Notification !== "undefined" ? Notification.permission : "default"
   );
 
-  const [profilePublic, setProfilePublic] = useState(true);
-  const [savingPrivacy, setSavingPrivacy] = useState(false);
   const [openFaq, setOpenFaq] = useState(null);
 
   useEffect(() => {
     if (userData) {
       setLocalUserData(userData);
-      setProfilePublic(userData.profilePublic !== false);
     }
   }, [userData]);
 
@@ -46,7 +43,6 @@ export default function Profile({ onBack, userData, onUpdateUser }) {
       if (snap.exists()) {
         const data = snap.data();
         setLocalUserData(data);
-        setProfilePublic(data.profilePublic !== false);
       }
     });
   }, [user]);
@@ -103,13 +99,6 @@ export default function Profile({ onBack, userData, onUpdateUser }) {
     setNotifPermission(result);
   };
 
-  const handleTogglePrivacy = async (val) => {
-    setProfilePublic(val);
-    setSavingPrivacy(true);
-    await updateDoc(doc(db, "users", user.uid), { profilePublic: val });
-    setSavingPrivacy(false);
-  };
-
   const handleSignOut = async () => {
     await signOut(auth);
   };
@@ -121,7 +110,6 @@ export default function Profile({ onBack, userData, onUpdateUser }) {
   const menuItems = [
     { key: "edit", label: "Edit profile" },
     { key: "notifications", label: "Notification settings" },
-    { key: "privacy", label: "Privacy" },
     { key: "help", label: "Help & support" },
     { key: "signout", label: "Sign out", danger: true, action: handleSignOut },
   ];
@@ -287,32 +275,6 @@ export default function Profile({ onBack, userData, onUpdateUser }) {
                       Notifications are blocked. To enable them, update your browser settings for this site.
                     </p>
                   )}
-                </div>
-              )}
-
-              {item.key === "privacy" && activePanel === "privacy" && (
-                <div style={styles.panel}>
-                  <div style={styles.settingRow}>
-                    <div>
-                      <p style={styles.settingTitle}>Public profile</p>
-                      <p style={styles.settingSubtitle}>
-                        {profilePublic ? "Other players can see your profile" : "Your profile is hidden from others"}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => handleTogglePrivacy(!profilePublic)}
-                      disabled={savingPrivacy}
-                      style={{
-                        ...styles.toggle,
-                        background: profilePublic ? "#1D9E75" : "#C9C6BC",
-                      }}
-                    >
-                      <div style={{
-                        ...styles.toggleKnob,
-                        transform: profilePublic ? "translateX(20px)" : "translateX(2px)",
-                      }} />
-                    </button>
-                  </div>
                 </div>
               )}
 

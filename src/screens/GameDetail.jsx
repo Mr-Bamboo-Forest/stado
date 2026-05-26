@@ -8,7 +8,8 @@ export default function GameDetail({ game, onBack, currentUser, userData, onJoin
 
   useEffect(() => {
     if (game.players && currentUser?.uid) {
-      setJoined(game.players.includes(currentUser.uid))
+      const playerUids = game.players.map(p => typeof p === 'string' ? p : p?.uid)
+      setJoined(playerUids.includes(currentUser.uid))
     }
   }, [game.players, currentUser])
 
@@ -22,9 +23,16 @@ export default function GameDetail({ game, onBack, currentUser, userData, onJoin
 
     setLoading(true)
     try {
+      const playerName = userData?.name || currentUser?.displayName || 'Player'
+      const playerPhoto = userData?.photoURL || currentUser?.photoURL || null
+
       await updateDoc(doc(db, 'games', game.id), {
         spotsRemaining: increment(-1),
-        players: [...(game.players || []), currentUser.uid],
+        players: [...(game.players || []), {
+          uid: currentUser.uid,
+          name: playerName,
+          photoURL: playerPhoto,
+        }],
       })
 
       await updateDoc(doc(db, 'users', currentUser.uid), {
@@ -160,20 +168,21 @@ export default function GameDetail({ game, onBack, currentUser, userData, onJoin
         <div style={styles.section}>
           <p style={styles.sectionTitle}>Players ({game.players?.length || 0}/{game.spotsTotal})</p>
           <div style={styles.playerList}>
-            {(game.players || []).slice(0, 8).map((playerId, i) => {
-              const isHost = playerId === game.hostUid
-              const isCurrentUser = playerId === currentUser?.uid
+            {(game.players || []).slice(0, 8).map((player, i) => {
+              const playerObj = typeof player === 'string' ? { uid: player, name: player } : player
+              const isHost = playerObj.uid === game.hostUid
+              const isCurrentUser = playerObj.uid === currentUser?.uid
+              const displayName = isCurrentUser ? 'You' : playerObj.name || `Player ${i + 1}`
+              const initial = displayName.charAt(0)?.toUpperCase() || '?'
 
               return (
                 <div key={i} style={styles.playerChip}>
-                  <div style={styles.playerAvatar}>
-                    {isCurrentUser
-                      ? userData?.name?.charAt(0)?.toUpperCase() || 'Y'
-                      : game.host?.charAt(0) || 'P'}
-                  </div>
-                  <span style={styles.playerName}>
-                    {isCurrentUser ? 'You' : isHost ? game.host : `Player ${i + 1}`}
-                  </span>
+                  {playerObj.photoURL ? (
+                    <img src={playerObj.photoURL} alt={displayName} style={styles.playerAvatarImg} />
+                  ) : (
+                    <div style={styles.playerAvatar}>{initial}</div>
+                  )}
+                  <span style={styles.playerName}>{displayName}</span>
                   {isHost && <span style={styles.hostBadge}>Host</span>}
                 </div>
               )
@@ -368,6 +377,13 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     fontSize: '12px',
+    fontWeight: '600',
+  },
+  playerAvatarImg: {
+    width: '28px',
+    height: '28px',
+    borderRadius: '50%',
+    objectFit: 'cover',
     fontWeight: '600',
   },
   playerName: {

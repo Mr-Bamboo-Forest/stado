@@ -139,6 +139,9 @@ export default function PostGame({ onBack, currentUser, userData }) {
     try {
       const joinCode = form.isPublic ? null : generateJoinCode()
 
+      const playerName = userData?.name || currentUser?.displayName || 'Host'
+      const playerPhoto = userData?.photoURL || currentUser?.photoURL || null
+
       await addDoc(collection(db, 'games'), {
         name: form.name,
         format: form.format,
@@ -150,12 +153,16 @@ export default function PostGame({ onBack, currentUser, userData }) {
         time: form.time,
         spotsTotal: parseInt(form.spots, 10),
         spotsRemaining: parseInt(form.spots, 10) - 1,
-        host: userData?.name || currentUser?.displayName || 'Host',
+        host: playerName,
         hostUid: currentUser.uid,
-        hostPhotoURL: userData?.photoURL || currentUser?.photoURL || null,
+        hostPhotoURL: playerPhoto,
         skill: form.skill,
         note: form.note || '',
-        players: [currentUser.uid],
+        players: [{
+          uid: currentUser.uid,
+          name: playerName,
+          photoURL: playerPhoto,
+        }],
         isPublic: form.isPublic,
         joinCode,
         createdAt: serverTimestamp(),
