@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { onAuthStateChanged } from 'firebase/auth'
-import { doc, getDoc } from 'firebase/firestore'
+import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { auth, db } from './firebase'
 import SignIn from './screens/SignIn'
 import Onboarding from './screens/Onboarding'
@@ -11,7 +11,7 @@ import Profile from './screens/Profile'
 
 export default function App() {
   const [user, setUser] = useState(null)
-  const [hasProfile, setHasProfile] = useState(null)
+  const [userData, setUserData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [screen, setScreen] = useState('discover')
   const [selectedGame, setSelectedGame] = useState(null)
@@ -20,11 +20,15 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         setUser(firebaseUser)
-        const profileSnap = await getDoc(doc(db, 'users', firebaseUser.uid))
-        setHasProfile(profileSnap.exists())
+        const userSnap = await getDoc(doc(db, 'users', firebaseUser.uid))
+        if (userSnap.exists()) {
+          setUserData(userSnap.data())
+        } else {
+          setUserData(null)
+        }
       } else {
         setUser(null)
-        setHasProfile(null)
+        setUserData(null)
       }
       setLoading(false)
     })
@@ -32,6 +36,11 @@ export default function App() {
   }, [])
 
   const goToGame = (game) => {
+    setSelectedGame(game)
+    setScreen('detail')
+  }
+
+  const goToGameDetail = (game) => {
     setSelectedGame(game)
     setScreen('detail')
   }
@@ -44,8 +53,36 @@ export default function App() {
   const handleSignInSuccess = () => {
   }
 
-  const handleOnboardingComplete = () => {
-    setHasProfile(true)
+  const handleOnboardingComplete = async () => {
+    if (user) {
+      const userSnap = await getDoc(doc(db, 'users', user.uid))
+      if (userSnap.exists()) {
+        setUserData(userSnap.data())
+      }
+    }
+  }
+
+  const handleUpdateUserData = (newData) => {
+    setUserData(newData)
+  }
+
+  const handleGamePosted = async () => {
+    if (user) {
+      const userSnap = await getDoc(doc(db, 'users', user.uid))
+      if (userSnap.exists()) {
+        setUserData(userSnap.data())
+      }
+    }
+    setScreen('discover')
+  }
+
+  const handleGameJoined = async () => {
+    if (user) {
+      const userSnap = await getDoc(doc(db, 'users', user.uid))
+      if (userSnap.exists()) {
+        setUserData(userSnap.data())
+      }
+    }
   }
 
   if (loading) {
@@ -60,16 +97,38 @@ export default function App() {
     return <SignIn onSuccess={handleSignInSuccess} />
   }
 
-  if (!hasProfile) {
-    return <Onboarding onComplete={handleOnboardingComplete} />
+  if (!userData) {
+    return <Onboarding onComplete={handleOnboardingComplete} user={user} />
   }
 
   return (
     <div style={styles.container}>
-      {screen === 'discover' && <Discover onGameClick={goToGame} />}
-      {screen === 'detail' && <GameDetail game={selectedGame} onBack={goBack} />}
-      {screen === 'post' && <PostGame onBack={() => setScreen('discover')} />}
-      {screen === 'profile' && <Profile onBack={() => setScreen('discover')} />}
+      {screen === 'discover' && (
+        <Discover
+          onGameClick={goToGame}
+          userData={userData}
+          onJoinWithCode={goToGameDetail}
+        />
+      )}
+      {screen === 'detail' && (
+        <GameDetail
+          game={selectedGame}
+          onBack={goBack}
+          currentUser={user}
+          userData={userData}
+          onJoined={handleGameJoined}
+        />
+      )}
+      {screen === 'post' && (
+        <PostGame onBack={handleGamePosted} currentUser={user} userData={userData} />
+      )}
+      {screen === 'profile' && (
+        <Profile
+          onBack={() => setScreen('discover')}
+          userData={userData}
+          onUpdateUser={handleUpdateUserData}
+        />
+      )}
 
       {screen !== 'detail' && (
         <nav style={styles.bottomNav}>
@@ -150,7 +209,7 @@ const styles = {
     justifyContent: 'space-around',
     background: 'white',
     borderTop: '1px solid #E0DDD5',
-    padding: '12px 8px 24px',
+    padding: '12px 8px calc(24px + env(safe-area-inset-bottom))',
     flexShrink: 0,
   },
   navItem: {

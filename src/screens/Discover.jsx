@@ -1,39 +1,147 @@
 import { useState, useEffect } from 'react'
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore'
+import { collection, onSnapshot, query, orderBy, where, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
 
-export default function Discover({ onGameClick }) {
+export default function Discover({ onGameClick, userData, onJoinWithCode }) {
   const [filter, setFilter] = useState('Any Time')
   const [games, setGames] = useState([])
+  const [userCoords, setUserCoords] = useState(null)
+  const [showJoinModal, setShowJoinModal] = useState(false)
+  const [joinCodeInput, setJoinCodeInput] = useState('')
+  const [joinCodeValid, setJoinCodeValid] = useState(null)
 
   useEffect(() => {
     const q = query(collection(db, 'games'), orderBy('createdAt', 'desc'))
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const gamesData = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }))
+      const gamesData = snapshot.docs
+        .map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }))
+        .filter((game) => game.isPublic !== false)
       setGames(gamesData)
     })
     return () => unsubscribe()
   }, [])
 
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setUserCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+        },
+        () => {}
+      )
+    }
+  }, [])
+
+  const calculateDistance = (lat, lng) => {
+    if (!userCoords || !lat || !lng) return null
+    const R = 6371
+    const dLat = ((lat - userCoords.lat) * Math.PI) / 180
+    const dLon = ((lng - userCoords.lng) * Math.PI) / 180
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((userCoords.lat * Math.PI) / 180) *
+        Math.cos((lat * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2)
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    const distance = R * c
+    return distance < 1 ? `${Math.round(distance * 1000)}m` : `${distance.toFixed(1)}km`
+  }
+
+  const formatDate = (dateStr, timeStr) => {
+    if (!dateStr) return ''
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const tomorrow = new Date(today)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    const date = new Date(dateStr + 'T00:00:00')
+    date.setHours(0, 0, 0, 0)
+
+    const isToday = date.getTime() === today.getTime()
+    const isTomorrow = date.getTime() === tomorrow.getTime()
+
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+    const timeFormatted = timeStr
+      ? new Date(`2000-01-01T${timeStr}`).toLocaleTimeString('en-US', {
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+        })
+      : ''
+
+    if (isToday) {
+      return `Tonight · ${timeFormatted}`
+    } else if (isTomorrow) {
+      return `Tomorrow · ${timeFormatted}`
+    } else {
+      const dayName = dayNames[date.getDay()]
+      const day = date.getDate()
+      const month = monthNames[date.getMonth()]
+      return `${dayName} ${day} ${month} · ${timeFormatted}`
+    }
+  }
+
   const filteredGames = games.filter((game) => {
-    if (filter === 'Tonight') return game.date === 'Tonight'
-    if (filter === 'This Week') return game.date === 'Tonight' || game.date === 'Tomorrow'
+    const dateStr = game.date
+    if (!dateStr) return true
+
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const tomorrow = new Date(today)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    const endOfWeek = new Date(today)
+    endOfWeek.setDate(endOfWeek.getDate() + 7)
+
+    const gameDate = new Date(dateStr + 'T00:00:00')
+    gameDate.setHours(0, 0, 0, 0)
+
+    if (filter === 'Tonight') {
+      return gameDate.getTime() === today.getTime()
+    } else if (filter === 'This Week') {
+      return gameDate >= today && gameDate <= endOfWeek
+    }
     return true
   })
+
+  const handleJoinWithCode = async () => {
+    if (joinCodeInput.length !== 6) {
+      setJoinCodeValid(false)
+      return
+    }
+
+    const gamesRef = collection(db, 'games')
+    const q = query(gamesRef, where('joinCode', '==', joinCodeInput.toUpperCase()))
+    const snapshot = await getDocs(q)
+
+    if (snapshot.empty) {
+      setJoinCodeValid(false)
+    } else {
+      const game = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() }
+      setJoinCodeValid(true)
+      onGameClick(game)
+      setShowJoinModal(false)
+      setJoinCodeInput('')
+      setJoinCodeValid(null)
+    }
+  }
 
   return (
     <div style={styles.screen}>
       <header style={styles.header}>
         <span style={styles.wordmark}>stado</span>
         <button style={styles.profileBtn} aria-label="Profile">
-          <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-            <circle cx="16" cy="16" r="16" fill="#E0DDD5" />
-            <circle cx="16" cy="13" r="5" fill="#7A7A72" />
-            <path d="M6 26c0-5.523 4.477-10 10-10s10 4.477 10 10" fill="#7A7A72" />
-          </svg>
+          {userData?.photoURL ? (
+            <img src={userData.photoURL} alt="Profile" style={styles.avatar} />
+          ) : (
+            <div style={styles.avatarPlaceholder}>
+              {userData?.name?.charAt(0)?.toUpperCase() || '?'}
+            </div>
+          )}
         </button>
       </header>
 
@@ -58,6 +166,12 @@ export default function Discover({ onGameClick }) {
               {f}
             </button>
           ))}
+          <button
+            style={styles.codeBtn}
+            onClick={() => setShowJoinModal(true)}
+          >
+            Join with code
+          </button>
         </div>
 
         <div style={styles.list}>
@@ -67,16 +181,63 @@ export default function Discover({ onGameClick }) {
             </div>
           ) : (
             filteredGames.map((game) => (
-              <GameCard key={game.id} game={game} onClick={() => onGameClick(game)} />
+              <GameCard
+                key={game.id}
+                game={game}
+                distance={calculateDistance(game.lat, game.lng)}
+                formattedDate={formatDate(game.date, game.time)}
+                onClick={() => onGameClick(game)}
+              />
             ))
           )}
         </div>
       </div>
+
+      {showJoinModal && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modal}>
+            <h3 style={styles.modalTitle}>Join with code</h3>
+            <p style={styles.modalHint}>Enter the 6-character code from the host</p>
+            <input
+              style={{
+                ...styles.modalInput,
+                borderColor: joinCodeValid === false ? '#D63D3D' : '#E0DDD5',
+              }}
+              type="text"
+              placeholder="e.g. ABC123"
+              value={joinCodeInput}
+              onChange={(e) => {
+                setJoinCodeInput(e.target.value.toUpperCase().slice(0, 6))
+                setJoinCodeValid(null)
+              }}
+              maxLength={6}
+            />
+            {joinCodeValid === false && (
+              <p style={styles.modalError}>Invalid code. Try again.</p>
+            )}
+            <div style={styles.modalActions}>
+              <button
+                style={styles.modalCancelBtn}
+                onClick={() => {
+                  setShowJoinModal(false)
+                  setJoinCodeInput('')
+                  setJoinCodeValid(null)
+                }}
+              >
+                Cancel
+              </button>
+              <button style={styles.modalJoinBtn} onClick={handleJoinWithCode}>
+                Join
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-function GameCard({ game, onClick }) {
+function GameCard({ game, distance, formattedDate, onClick }) {
   const spots = game.spotsRemaining || 0
   let spotsStyle = styles.spotsGreen
   if (spots >= 2 && spots <= 4) spotsStyle = styles.spotsAmber
@@ -101,14 +262,14 @@ function GameCard({ game, onClick }) {
             <circle cx="6.5" cy="4.75" r="1.25" fill="#7A7A72" />
           </svg>
           <span style={styles.metaText}>{game.location}</span>
-          {game.distance && <span style={styles.distance}>{game.distance}</span>}
+          {distance && <span style={styles.distance}>{distance}</span>}
         </div>
         <div style={styles.metaRow}>
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="#7A7A72" strokeWidth="1.25">
             <circle cx="6.5" cy="6.5" r="5" />
             <path d="M6.5 4v2.5l1.5 1.5" strokeLinecap="round" />
           </svg>
-          <span style={styles.metaText}>{game.date} {game.time}</span>
+          <span style={styles.metaText}>{formattedDate}</span>
         </div>
         <div style={styles.metaRow}>
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="#7A7A72" strokeWidth="1.25">
@@ -119,7 +280,7 @@ function GameCard({ game, onClick }) {
         </div>
       </div>
 
-      <button style={styles.joinBtn}>Join game</button>
+      <button style={styles.viewBtn}>View game</button>
     </article>
   )
 }
@@ -148,6 +309,25 @@ const styles = {
     background: 'none',
     border: 'none',
     cursor: 'pointer',
+    padding: 0,
+  },
+  avatar: {
+    width: '36px',
+    height: '36px',
+    borderRadius: '50%',
+    objectFit: 'cover',
+  },
+  avatarPlaceholder: {
+    width: '36px',
+    height: '36px',
+    borderRadius: '50%',
+    background: '#E0DDD5',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#7A7A72',
   },
   content: {
     flex: 1,
@@ -170,6 +350,7 @@ const styles = {
   },
   filters: {
     display: 'flex',
+    flexWrap: 'wrap',
     gap: '8px',
     padding: '12px 20px 16px',
     flexShrink: 0,
@@ -182,6 +363,16 @@ const styles = {
     border: '1.5px solid',
     cursor: 'pointer',
     transition: 'all 0.15s ease',
+  },
+  codeBtn: {
+    padding: '8px 16px',
+    borderRadius: '100px',
+    fontSize: '14px',
+    fontWeight: '500',
+    background: 'white',
+    color: '#1D9E75',
+    border: '1.5px solid #1D9E75',
+    cursor: 'pointer',
   },
   list: {
     display: 'flex',
@@ -257,7 +448,7 @@ const styles = {
     padding: '2px 7px',
     borderRadius: '5px',
   },
-  joinBtn: {
+  viewBtn: {
     width: '100%',
     padding: '11px 0',
     background: '#1D9E75',
@@ -276,5 +467,85 @@ const styles = {
     fontSize: '17px',
     fontWeight: '600',
     color: '#2C2C2A',
+  },
+  modalOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: 'rgba(0,0,0,0.5)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '24px',
+    zIndex: 1000,
+  },
+  modal: {
+    background: 'white',
+    borderRadius: '16px',
+    padding: '24px',
+    width: '100%',
+    maxWidth: '320px',
+  },
+  modalTitle: {
+    fontSize: '18px',
+    fontWeight: '600',
+    color: '#2C2C2A',
+    marginBottom: '8px',
+    textAlign: 'center',
+  },
+  modalHint: {
+    fontSize: '14px',
+    color: '#7A7A72',
+    textAlign: 'center',
+    marginBottom: '16px',
+  },
+  modalInput: {
+    width: '100%',
+    padding: '14px',
+    fontSize: '18px',
+    fontWeight: '600',
+    textAlign: 'center',
+    letterSpacing: '8px',
+    background: 'white',
+    border: '2px solid',
+    borderRadius: '12px',
+    outline: 'none',
+    color: '#2C2C2A',
+    textTransform: 'uppercase',
+  },
+  modalError: {
+    fontSize: '13px',
+    color: '#D63D3D',
+    textAlign: 'center',
+    marginTop: '8px',
+  },
+  modalActions: {
+    display: 'flex',
+    gap: '12px',
+    marginTop: '20px',
+  },
+  modalCancelBtn: {
+    flex: 1,
+    padding: '12px',
+    background: 'white',
+    color: '#555550',
+    fontSize: '15px',
+    fontWeight: '600',
+    borderRadius: '10px',
+    border: '1px solid #E0DDD5',
+    cursor: 'pointer',
+  },
+  modalJoinBtn: {
+    flex: 1,
+    padding: '12px',
+    background: '#1D9E75',
+    color: 'white',
+    fontSize: '15px',
+    fontWeight: '600',
+    borderRadius: '10px',
+    border: 'none',
+    cursor: 'pointer',
   },
 }
