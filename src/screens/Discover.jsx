@@ -423,7 +423,7 @@ const gamesWithDistance = games
                 style={{...styles.gameFilterBtn, ...(gameFilter === 'nearby' ? styles.gameFilterBtnActive : {})}}
                 onClick={() => setGameFilter('nearby')}
               >
-                Nearby
+                Open
               </button>
               <button
                 style={{...styles.gameFilterBtn, ...(gameFilter === 'hosting' ? styles.gameFilterBtnActive : {})}}
