@@ -126,9 +126,17 @@ export default function GameDetail({ game, onBack, currentUser, userData, onJoin
             </svg>
             <div>
               <p style={styles.infoLabel}>Location</p>
-              <p style={styles.infoValue}>{game.location}</p>
-              {joined && game.lat && game.lng && (
-                <p style={styles.address}>Lat: {game.lat.toFixed(4)}, Lng: {game.lng.toFixed(4)}</p>
+              {joined ? (
+                <>
+                  <p style={styles.infoValue}>{game.location}</p>
+                  {game.lat && game.lng && (
+                    <p style={styles.address}>📍 {game.lat.toFixed(4)}, {game.lng.toFixed(4)}</p>
+                  )}
+                </>
+              ) : (
+                <p style={{ ...styles.infoValue, color: '#B4B2A9', fontStyle: 'italic' }}>
+                  Join to reveal address
+                </p>
               )}
             </div>
           </div>
