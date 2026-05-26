@@ -104,6 +104,7 @@ export default function Discover({ onGameClick, userData, onJoinWithCode, onProf
   const [viewMode, setViewMode] = useState('map')
   const [games, setGames] = useState([])
   const [userCoords, setUserCoords] = useState(null)
+  const [usingFallback, setUsingFallback] = useState(false)
   const [distanceFilter, setDistanceFilter] = useState('10km')
   const [showJoinModal, setShowJoinModal] = useState(false)
   const [joinCodeInput, setJoinCodeInput] = useState('')
@@ -128,13 +129,16 @@ export default function Discover({ onGameClick, userData, onJoinWithCode, onProf
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           setUserCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+          setUsingFallback(false)
         },
         () => {
           setUserCoords({ lat: BRISBANE_CENTER[0], lng: BRISBANE_CENTER[1] })
+          setUsingFallback(true)
         }
       )
     } else {
       setUserCoords({ lat: BRISBANE_CENTER[0], lng: BRISBANE_CENTER[1] })
+      setUsingFallback(true)
     }
   }, [])
 
@@ -231,6 +235,16 @@ export default function Discover({ onGameClick, userData, onJoinWithCode, onProf
             List
           </button>
         </div>
+
+        {usingFallback && (
+          <div style={styles.locationBanner}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 8v4M12 16h.01" />
+            </svg>
+            <span>Showing games near Brisbane — enable location for local results</span>
+          </div>
+        )}
 
         {viewMode === 'map' ? (
           <div style={styles.mapContainer}>
@@ -539,6 +553,19 @@ const styles = {
     display: 'flex',
     gap: '8px',
     padding: '0 16px 12px',
+    flexShrink: 0,
+  },
+  locationBanner: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '10px 16px',
+    margin: '0 16px 8px',
+    background: '#FAEEDA',
+    borderRadius: '10px',
+    fontSize: '13px',
+    fontWeight: '500',
+    color: '#9B5E00',
     flexShrink: 0,
   },
   toggleBtn: {
