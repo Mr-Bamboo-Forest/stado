@@ -206,7 +206,7 @@ const gamesWithDistance = games
     distance: getGameDistance(game),
   }))
   .filter((game) => {
-    if (showMyGames) return game.host === userData?.name
+    if (showMyGames) return game.hostUid === auth.currentUser?.uid
     return game.distance <= getDistanceLimit()
   })
   .sort((a, b) => a.distance - b.distance)

@@ -77,7 +77,7 @@ export default function PostGame({ onBack, currentUser, userData }) {
         skill: form.skill, note: form.note || '',
         players: [{ uid: currentUser.uid, name: playerName, photoURL: playerPhoto }],
         isPublic: form.isPublic, joinCode,
-        createdAt: serverTimestamp(),
+        createdAt: new Date(),
       })
 
       await updateDoc(doc(db, 'users', currentUser.uid), { gamesHosted: increment(1) })
