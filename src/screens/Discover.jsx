@@ -1,11 +1,110 @@
 import { useState, useEffect } from 'react'
 import { collection, onSnapshot, query, orderBy, where, getDocs } from 'firebase/firestore'
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 import { db } from '../firebase'
 
+delete L.Icon.Default.prototype._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+})
+
+const BRISBANE_CENTER = [-27.4698, 153.0251]
+const DISTANCE_FILTERS = ['2km', '5km', '10km', '25km', 'Any distance']
+
+function createColoredIcon(color) {
+  return L.divIcon({
+    className: 'custom-div-icon',
+    html: `<div style="
+      background-color: ${color};
+      width: 24px;
+      height: 24px;
+      border-radius: 50% 50% 50% 0;
+      transform: rotate(-45deg);
+      border: 2px solid white;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    "></div>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 24],
+    popupAnchor: [0, -24],
+  })
+}
+
+function MapController({ center }) {
+  const map = useMap()
+  useEffect(() => {
+    if (center) {
+      map.setView(center, 14)
+    }
+  }, [center, map])
+  return null
+}
+
+function haversineDistance(lat1, lon1, lat2, lon2) {
+  if (!lat1 || !lon1 || !lat2 || !lon2) return Infinity
+  const R = 6371
+  const dLat = ((lat2 - lat1) * Math.PI) / 180
+  const dLon = ((lon2 - lon1) * Math.PI) / 180
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) *
+    Math.sin(dLon / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return R * c
+}
+
+function formatDistance(km) {
+  if (km < 1) {
+    return `${Math.round(km * 1000)}m`
+  }
+  return `${km.toFixed(1)}km`
+}
+
+function formatDate(dateStr, timeStr) {
+  if (!dateStr) return ''
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const tomorrow = new Date(today)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  const date = new Date(dateStr + 'T00:00:00')
+  date.setHours(0, 0, 0, 0)
+
+  const isToday = date.getTime() === today.getTime()
+  const isTomorrow = date.getTime() === tomorrow.getTime()
+
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+  const timeFormatted = timeStr
+    ? new Date(`2000-01-01T${timeStr}`).toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      })
+    : ''
+
+  if (isToday) {
+    return `Tonight · ${timeFormatted}`
+  } else if (isTomorrow) {
+    return `Tomorrow · ${timeFormatted}`
+  } else {
+    const dayName = dayNames[date.getDay()]
+    const day = date.getDate()
+    const month = monthNames[date.getMonth()]
+    return `${dayName} ${day} ${month} · ${timeFormatted}`
+  }
+}
+
 export default function Discover({ onGameClick, userData, onJoinWithCode, onProfileClick }) {
-  const [filter, setFilter] = useState('Any Time')
+  const [viewMode, setViewMode] = useState('map')
   const [games, setGames] = useState([])
   const [userCoords, setUserCoords] = useState(null)
+  const [distanceFilter, setDistanceFilter] = useState('10km')
   const [showJoinModal, setShowJoinModal] = useState(false)
   const [joinCodeInput, setJoinCodeInput] = useState('')
   const [joinCodeValid, setJoinCodeValid] = useState(null)
@@ -30,83 +129,38 @@ export default function Discover({ onGameClick, userData, onJoinWithCode, onProf
         (pos) => {
           setUserCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude })
         },
-        () => {}
+        () => {
+          setUserCoords({ lat: BRISBANE_CENTER[0], lng: BRISBANE_CENTER[1] })
+        }
       )
+    } else {
+      setUserCoords({ lat: BRISBANE_CENTER[0], lng: BRISBANE_CENTER[1] })
     }
   }, [])
 
-  const calculateDistance = (lat, lng) => {
-    if (!userCoords || !lat || !lng) return null
-    const R = 6371
-    const dLat = ((lat - userCoords.lat) * Math.PI) / 180
-    const dLon = ((lng - userCoords.lng) * Math.PI) / 180
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((userCoords.lat * Math.PI) / 180) *
-        Math.cos((lat * Math.PI) / 180) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2)
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-    const distance = R * c
-    return distance < 1 ? `${Math.round(distance * 1000)}m` : `${distance.toFixed(1)}km`
+  const getGameDistance = (game) => {
+    if (!userCoords || !game.lat || !game.lng) return Infinity
+    return haversineDistance(userCoords.lat, userCoords.lng, game.lat, game.lng)
   }
 
-  const formatDate = (dateStr, timeStr) => {
-    if (!dateStr) return ''
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const tomorrow = new Date(today)
-    tomorrow.setDate(tomorrow.getDate() + 1)
-    const date = new Date(dateStr + 'T00:00:00')
-    date.setHours(0, 0, 0, 0)
-
-    const isToday = date.getTime() === today.getTime()
-    const isTomorrow = date.getTime() === tomorrow.getTime()
-
-    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
-    const timeFormatted = timeStr
-      ? new Date(`2000-01-01T${timeStr}`).toLocaleTimeString('en-US', {
-          hour: 'numeric',
-          minute: '2-digit',
-          hour12: true,
-        })
-      : ''
-
-    if (isToday) {
-      return `Tonight · ${timeFormatted}`
-    } else if (isTomorrow) {
-      return `Tomorrow · ${timeFormatted}`
-    } else {
-      const dayName = dayNames[date.getDay()]
-      const day = date.getDate()
-      const month = monthNames[date.getMonth()]
-      return `${dayName} ${day} ${month} · ${timeFormatted}`
-    }
+  const getDistanceLimit = () => {
+    if (distanceFilter === 'Any distance') return Infinity
+    return parseInt(distanceFilter)
   }
 
-  const filteredGames = games.filter((game) => {
-    const dateStr = game.date
-    if (!dateStr) return true
+  const gamesWithDistance = games
+    .map((game) => ({
+      ...game,
+      distance: getGameDistance(game),
+    }))
+    .filter((game) => game.distance <= getDistanceLimit())
+    .sort((a, b) => a.distance - b.distance)
 
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const tomorrow = new Date(today)
-    tomorrow.setDate(tomorrow.getDate() + 1)
-    const endOfWeek = new Date(today)
-    endOfWeek.setDate(endOfWeek.getDate() + 7)
-
-    const gameDate = new Date(dateStr + 'T00:00:00')
-    gameDate.setHours(0, 0, 0, 0)
-
-    if (filter === 'Tonight') {
-      return gameDate.getTime() === today.getTime()
-    } else if (filter === 'This Week') {
-      return gameDate >= today && gameDate <= endOfWeek
-    }
-    return true
-  })
+  const getPinColor = (spotsRemaining) => {
+    if (spotsRemaining === 1) return '#DC2626'
+    if (spotsRemaining >= 2 && spotsRemaining <= 4) return '#F59E0B'
+    return '#1D9E75'
+  }
 
   const handleJoinWithCode = async () => {
     if (joinCodeInput.length !== 6) {
@@ -130,6 +184,10 @@ export default function Discover({ onGameClick, userData, onJoinWithCode, onProf
     }
   }
 
+  const mapCenter = userCoords
+    ? [userCoords.lat, userCoords.lng]
+    : BRISBANE_CENTER
+
   return (
     <div style={styles.screen}>
       <header style={styles.header}>
@@ -146,51 +204,129 @@ export default function Discover({ onGameClick, userData, onJoinWithCode, onProf
       </header>
 
       <div style={styles.content}>
-        <div style={styles.heading}>
-          <h1 style={styles.title}>Find a game</h1>
-          <p style={styles.subtitle}>Brisbane & surrounds</p>
-        </div>
-
-        <div style={styles.filters}>
-          {['Tonight', 'This Week', 'Any Time'].map((f) => (
-            <button
-              key={f}
-              style={{
-                ...styles.chip,
-                background: filter === f ? '#085041' : 'white',
-                color: filter === f ? 'white' : '#555550',
-                borderColor: filter === f ? '#085041' : '#E0DDD5',
-              }}
-              onClick={() => setFilter(f)}
-            >
-              {f}
-            </button>
-          ))}
+        <div style={styles.viewToggle}>
           <button
-            style={styles.codeBtn}
-            onClick={() => setShowJoinModal(true)}
+            style={{
+              ...styles.toggleBtn,
+              ...(viewMode === 'map' ? styles.toggleBtnActive : {}),
+            }}
+            onClick={() => setViewMode('map')}
           >
-            Join with code
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+              <circle cx="12" cy="10" r="3" />
+            </svg>
+            Map
+          </button>
+          <button
+            style={{
+              ...styles.toggleBtn,
+              ...(viewMode === 'list' ? styles.toggleBtnActive : {}),
+            }}
+            onClick={() => setViewMode('list')}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
+            </svg>
+            List
           </button>
         </div>
 
-        <div style={styles.list}>
-          {filteredGames.length === 0 ? (
-            <div style={styles.empty}>
-              <p style={styles.emptyText}>No games found</p>
-            </div>
-          ) : (
-            filteredGames.map((game) => (
-              <GameCard
-                key={game.id}
-                game={game}
-                distance={calculateDistance(game.lat, game.lng)}
-                formattedDate={formatDate(game.date, game.time)}
-                onClick={() => onGameClick(game)}
+        {viewMode === 'map' ? (
+          <div style={styles.mapContainer}>
+            <MapContainer
+              center={mapCenter}
+              zoom={14}
+              style={styles.map}
+              scrollWheelZoom={true}
+            >
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
-            ))
-          )}
-        </div>
+              <MapController center={mapCenter} />
+              {gamesWithDistance.map((game) => (
+                <Marker
+                  key={game.id}
+                  position={[game.lat, game.lng]}
+                  icon={createColoredIcon(getPinColor(game.spotsRemaining))}
+                >
+                  <Popup>
+                    <div style={popupStyles.container} onClick={() => onGameClick(game)}>
+                      <div style={popupStyles.header}>
+                        <span style={popupStyles.name}>{game.name}</span>
+                        <span style={{
+                          ...popupStyles.badge,
+                          background: game.spotsRemaining === 1 ? '#FCEBEB' : '#E1F5EE',
+                          color: game.spotsRemaining === 1 ? '#DC2626' : '#0A6B4E',
+                        }}>
+                          {game.spotsRemaining === 1 ? '1 spot' : `${game.spotsRemaining} spots`}
+                        </span>
+                      </div>
+                      <div style={popupStyles.details}>
+                        <div style={popupStyles.row}>
+                          <span style={popupStyles.format}>{game.format}</span>
+                        </div>
+                        <div style={popupStyles.row}>
+                          <span style={popupStyles.time}>{formatDate(game.date, game.time)}</span>
+                        </div>
+                        <div style={popupStyles.row}>
+                          <span style={popupStyles.distance}>{formatDistance(game.distance)} away</span>
+                        </div>
+                      </div>
+                    </div>
+                  </Popup>
+                </Marker>
+              ))}
+            </MapContainer>
+          </div>
+        ) : (
+          <>
+            <div style={styles.filters}>
+              <div style={styles.distanceFilters}>
+                {DISTANCE_FILTERS.map((d) => (
+                  <button
+                    key={d}
+                    style={{
+                      ...styles.chip,
+                      background: distanceFilter === d ? '#085041' : 'white',
+                      color: distanceFilter === d ? 'white' : '#555550',
+                      borderColor: distanceFilter === d ? '#085041' : '#E0DDD5',
+                    }}
+                    onClick={() => setDistanceFilter(d)}
+                  >
+                    {d}
+                  </button>
+                ))}
+              </div>
+              <button
+                style={styles.codeBtn}
+                onClick={() => setShowJoinModal(true)}
+              >
+                Join with code
+              </button>
+            </div>
+
+            <div style={styles.list}>
+              {gamesWithDistance.length === 0 ? (
+                <div style={styles.empty}>
+                  <p style={styles.emptyText}>No games nearby</p>
+                  <p style={styles.emptyHint}>Try expanding your search radius</p>
+                </div>
+              ) : (
+                gamesWithDistance.map((game) => (
+                  <GameCard
+                    key={game.id}
+                    game={game}
+                    distance={formatDistance(game.distance)}
+                    formattedDate={formatDate(game.date, game.time)}
+                    onClick={() => onGameClick(game)}
+                  />
+                ))
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {showJoinModal && (
@@ -233,6 +369,17 @@ export default function Discover({ onGameClick, userData, onJoinWithCode, onProf
           </div>
         </div>
       )}
+
+      <style>{`
+        .leaflet-popup-content-wrapper {
+          border-radius: 12px;
+          padding: 0;
+        }
+        .leaflet-popup-content {
+          margin: 0;
+          min-width: 180px;
+        }
+      `}</style>
     </div>
   )
 }
@@ -262,7 +409,7 @@ function GameCard({ game, distance, formattedDate, onClick }) {
             <circle cx="6.5" cy="4.75" r="1.25" fill="#7A7A72" />
           </svg>
           <span style={styles.metaText}>{game.location}</span>
-          {distance && <span style={styles.distance}>{distance}</span>}
+          <span style={styles.distance}>{distance}</span>
         </div>
         <div style={styles.metaRow}>
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="#7A7A72" strokeWidth="1.25">
@@ -283,6 +430,59 @@ function GameCard({ game, distance, formattedDate, onClick }) {
       <button style={styles.viewBtn}>View game</button>
     </article>
   )
+}
+
+const popupStyles = {
+  container: {
+    cursor: 'pointer',
+    padding: '8px 0',
+  },
+  header: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: '8px',
+    gap: '8px',
+  },
+  name: {
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#2C2C2A',
+    lineHeight: '1.2',
+  },
+  badge: {
+    fontSize: '10px',
+    fontWeight: '600',
+    padding: '2px 6px',
+    borderRadius: '100px',
+    whiteSpace: 'nowrap',
+  },
+  details: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+  },
+  row: {
+    display: 'flex',
+    alignItems: 'center',
+  },
+  format: {
+    fontSize: '11px',
+    fontWeight: '500',
+    color: '#7A7A72',
+    background: '#F1EFE8',
+    padding: '2px 6px',
+    borderRadius: '4px',
+  },
+  time: {
+    fontSize: '12px',
+    color: '#555550',
+  },
+  distance: {
+    fontSize: '11px',
+    color: '#1D9E75',
+    fontWeight: '500',
+  },
 }
 
 const styles = {
@@ -331,50 +531,80 @@ const styles = {
   },
   content: {
     flex: 1,
-    overflowY: 'auto',
-    paddingBottom: '12px',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
   },
-  heading: {
-    padding: '8px 20px 4px',
+  viewToggle: {
+    display: 'flex',
+    gap: '8px',
+    padding: '0 16px 12px',
+    flexShrink: 0,
   },
-  title: {
-    fontSize: '28px',
-    fontWeight: '700',
-    letterSpacing: '-0.8px',
-    color: '#2C2C2A',
-  },
-  subtitle: {
-    fontSize: '14px',
+  toggleBtn: {
+    flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '6px',
+    padding: '10px 0',
+    background: 'white',
     color: '#7A7A72',
-    marginTop: '3px',
+    fontSize: '14px',
+    fontWeight: '600',
+    borderRadius: '10px',
+    border: '1px solid #E0DDD5',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+  toggleBtnActive: {
+    background: '#085041',
+    color: 'white',
+    borderColor: '#085041',
+  },
+  mapContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  map: {
+    height: '100%',
+    width: '100%',
   },
   filters: {
     display: 'flex',
-    flexWrap: 'wrap',
-    gap: '8px',
-    padding: '12px 20px 16px',
+    flexDirection: 'column',
+    gap: '10px',
+    padding: '12px 16px',
     flexShrink: 0,
   },
+  distanceFilters: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '8px',
+  },
   chip: {
-    padding: '8px 16px',
+    padding: '8px 14px',
     borderRadius: '100px',
-    fontSize: '14px',
+    fontSize: '13px',
     fontWeight: '500',
     border: '1.5px solid',
     cursor: 'pointer',
     transition: 'all 0.15s ease',
   },
   codeBtn: {
-    padding: '8px 16px',
-    borderRadius: '100px',
+    padding: '10px 16px',
+    borderRadius: '10px',
     fontSize: '14px',
-    fontWeight: '500',
-    background: 'white',
-    color: '#1D9E75',
-    border: '1.5px solid #1D9E75',
+    fontWeight: '600',
+    background: '#E1F5EE',
+    color: '#085041',
+    border: 'none',
     cursor: 'pointer',
+    textAlign: 'center',
   },
   list: {
+    flex: 1,
+    overflowY: 'auto',
     display: 'flex',
     flexDirection: 'column',
     gap: '12px',
@@ -443,8 +673,9 @@ const styles = {
   },
   distance: {
     fontSize: '12px',
-    color: '#7A7A72',
-    background: '#F1EFE8',
+    color: '#1D9E75',
+    fontWeight: '600',
+    background: '#E1F5EE',
     padding: '2px 7px',
     borderRadius: '5px',
   },
@@ -467,6 +698,11 @@ const styles = {
     fontSize: '17px',
     fontWeight: '600',
     color: '#2C2C2A',
+    marginBottom: '8px',
+  },
+  emptyHint: {
+    fontSize: '14px',
+    color: '#7A7A72',
   },
   modalOverlay: {
     position: 'fixed',
