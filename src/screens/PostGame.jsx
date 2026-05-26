@@ -61,6 +61,7 @@ export default function PostGame({ onBack, currentUser, userData }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (!isFormValid) return
     setSubmitting(true)
     try {
       const joinCode = form.isPublic ? null : generateJoinCode()
@@ -153,7 +154,7 @@ export default function PostGame({ onBack, currentUser, userData }) {
 
       <form style={styles.form} onSubmit={handleSubmit}>
         <div style={styles.field}>
-          <label style={styles.label}>Game name</label>
+          <label style={styles.label}>Game name <span style={styles.required}>* Required</span></label>
           <input style={styles.input} type="text" placeholder="e.g. South Bank Sunday Kickaround"
             value={form.name} onChange={(e) => handleChange('name', e.target.value)} required disabled={submitting} />
         </div>
@@ -174,12 +175,12 @@ export default function PostGame({ onBack, currentUser, userData }) {
 
         <div style={styles.row}>
           <div style={styles.field}>
-            <label style={styles.label}>Date</label>
+            <label style={styles.label}>Date <span style={styles.required}>* Required</span></label>
             <input style={{ ...styles.input, ...styles.inputSmall }} type="date"
               value={form.date} onChange={(e) => handleChange('date', e.target.value)} required disabled={submitting} />
           </div>
           <div style={styles.field}>
-            <label style={styles.label}>Time</label>
+            <label style={styles.label}>Time <span style={styles.required}>* Required</span></label>
             <input style={{ ...styles.input, ...styles.inputSmall }} type="time"
               value={form.time} onChange={(e) => handleChange('time', e.target.value)} required disabled={submitting} />
           </div>
@@ -187,7 +188,7 @@ export default function PostGame({ onBack, currentUser, userData }) {
 
         <div style={styles.field}>
           <div style={styles.locationHeader}>
-            <label style={styles.label}>Location</label>
+            <label style={styles.label}>Location <span style={styles.required}>* Required</span></label>
             <button type="button" style={styles.locationBtn} onClick={getCurrentLocation} disabled={submitting}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="3" />
@@ -202,7 +203,7 @@ export default function PostGame({ onBack, currentUser, userData }) {
 
         <div style={styles.field}>
           <label style={styles.label}>Pin location on map</label>
-          <p style={styles.hint}>Tap the map to set exact location</p>
+          <p style={styles.hint}>Tap the map to set exact location <span style={styles.required}>* Required</span></p>
           <div style={styles.mapContainer}>
             <MapContainer center={BRISBANE_CENTER} zoom={13} style={styles.map} scrollWheelZoom={false}>
               <TileLayer
@@ -264,7 +265,11 @@ export default function PostGame({ onBack, currentUser, userData }) {
             value={form.note} onChange={(e) => handleChange('note', e.target.value)} rows={3} disabled={submitting} />
         </div>
 
-        <button style={{ ...styles.submitBtn, opacity: submitting ? 0.7 : 1 }} type="submit" disabled={submitting}>
+        <button
+          style={{ ...styles.submitBtn, opacity: submitting || !isFormValid ? 0.4 : 1, cursor: isFormValid ? 'pointer' : 'not-allowed' }}
+          type="submit"
+          disabled={submitting || !isFormValid}
+        >
           {submitting ? 'Posting...' : 'Post game'}
         </button>
       </form>
@@ -304,4 +309,5 @@ const styles = {
   copyBtn: { width: '100%', maxWidth: '280px', padding: '14px', background: '#085041', color: 'white', fontSize: '15px', fontWeight: '600', borderRadius: '12px', border: 'none', cursor: 'pointer' },
   whatsappBtn: { width: '100%', maxWidth: '280px', padding: '14px', background: '#25D366', color: 'white', fontSize: '15px', fontWeight: '600', borderRadius: '12px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' },
   doneBtn: { background: 'none', border: 'none', color: '#7A7A72', fontSize: '15px', fontWeight: '500', cursor: 'pointer', padding: '8px', textDecoration: 'underline', textDecorationColor: '#C9C6BC' },
+  required: { fontSize: '11px',  fontWeight: '600',  color: '#D63D3D',  marginLeft: '4px',},
 }

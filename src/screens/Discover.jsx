@@ -483,7 +483,7 @@ const gamesWithDistance = games
                 borderColor: joinCodeValid === false ? '#D63D3D' : '#E0DDD5',
               }}
               type="text"
-              placeholder="e.g. ABC123"
+              placeholder="ABC123"
               value={joinCodeInput}
               onChange={(e) => {
                 setJoinCodeInput(e.target.value.toUpperCase().slice(0, 6))
