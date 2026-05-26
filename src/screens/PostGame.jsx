@@ -43,6 +43,8 @@ export default function PostGame({ onBack, currentUser, userData }) {
   const [submitting, setSubmitting] = useState(false)
   const [postedCode, setPostedCode] = useState(null)
   const [copied, setCopied] = useState(false)
+  const [postResult, setPostResult] = useState(null) // 'success' or 'error'
+  const [postError, setPostError] = useState('')
 
   useEffect(() => {
     if (mapPosition) {
@@ -93,15 +95,26 @@ export default function PostGame({ onBack, currentUser, userData }) {
 
       await updateDoc(doc(db, 'users', currentUser.uid), { gamesHosted: increment(1) })
 
+      // Show success modal
+      setPostResult('success')
+      setSubmitting(false)
+
+      // If private, show code. Otherwise, go back after delay
       if (!form.isPublic && joinCode) {
-        setPostedCode(joinCode)
+        setTimeout(() => {
+          setPostResult(null)
+          setPostedCode(joinCode)
+        }, 2000)
       } else {
-        onBack()
+        setTimeout(() => {
+          setPostResult(null)
+          onBack()
+        }, 2000)
       }
     } catch (error) {
       console.error('Error adding game:', error)
-      alert('Failed to post game. Please try again.')
-    } finally {
+      setPostError(error.message || 'Failed to post game')
+      setPostResult('error')
       setSubmitting(false)
     }
   }
@@ -283,6 +296,42 @@ export default function PostGame({ onBack, currentUser, userData }) {
         >
           {submitting ? 'Posting...' : 'Post game'}
         </button>
+
+        {/* Success Modal */}
+        {postResult === 'success' && (
+          <div style={styles.modal}>
+            <div style={styles.modalContent}>
+              <div style={styles.modalIcon}>
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+              </div>
+              <h3 style={styles.modalTitle}>Game posted successfully!</h3>
+              <p style={styles.modalMessage}>Your game is now live. Players can find and join it.</p>
+            </div>
+          </div>
+        )}
+
+        {/* Error Modal */}
+        {postResult === 'error' && (
+          <div style={styles.modal}>
+            <div style={styles.modalContent}>
+              <div style={styles.modalIconError}>
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
+                  <path d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </div>
+              <h3 style={styles.modalTitle}>Failed to post game</h3>
+              <p style={styles.modalMessage}>Please check your connection and try again.</p>
+              <button 
+                style={styles.modalRetryBtn}
+                onClick={() => setPostResult(null)}
+              >
+                Try again
+              </button>
+            </div>
+          </div>
+        )}
       </form>
     </div>
   )
@@ -321,4 +370,29 @@ const styles = {
   whatsappBtn: { width: '100%', maxWidth: '280px', padding: '14px', background: '#25D366', color: 'white', fontSize: '15px', fontWeight: '600', borderRadius: '12px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' },
   doneBtn: { background: 'none', border: 'none', color: '#7A7A72', fontSize: '15px', fontWeight: '500', cursor: 'pointer', padding: '8px', textDecoration: 'underline', textDecorationColor: '#C9C6BC' },
   required: { fontSize: '11px', fontWeight: '600', color: '#D63D3D', marginLeft: '4px' },
+  modal: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', zIndex: 1000 },
+  modalContent: { background: 'white', borderRadius: '20px', padding: '40px 24px', width: '100%', maxWidth: '300px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', animation: 'slideUp 0.4s ease-out' },
+  modalIcon: { width: '64px', height: '64px', borderRadius: '50%', background: '#1D9E75', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  modalIconError: { width: '64px', height: '64px', borderRadius: '50%', background: '#D63D3D', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  modalTitle: { fontSize: '18px', fontWeight: '700', color: '#2C2C2A', margin: 0 },
+  modalMessage: { fontSize: '14px', color: '#7A7A72', margin: 0, lineHeight: '1.5' },
+  modalRetryBtn: { marginTop: '8px', padding: '12px 24px', background: '#1D9E75', color: 'white', fontSize: '14px', fontWeight: '600', borderRadius: '10px', border: 'none', cursor: 'pointer' },
+}
+
+// Add animation keyframes
+if (typeof document !== 'undefined') {
+  const style = document.createElement('style')
+  style.textContent = `
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+  `
+  document.head.appendChild(style)
 }
