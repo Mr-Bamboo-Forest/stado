@@ -1,20 +1,22 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { doc, setDoc } from 'firebase/firestore'
-import { auth, db } from '../firebase'
-import { ensureUserCode } from '../utils/social'
+import { db } from '../firebase'
 
 const POSITIONS = [
-  { id: 'goalkeeper', label: 'Goalkeeper', icon: 'GK' },
-  { id: 'defender', label: 'Defender', icon: 'CB' },
-  { id: 'midfielder', label: 'Midfielder', icon: 'CM' },
-  { id: 'winger', label: 'Winger', icon: 'LW' },
-  { id: 'striker', label: 'Striker', icon: 'ST' },
+  { id: 'goalkeeper', label: 'Goalkeeper' },
+  { id: 'defender', label: 'Defender' },
+  { id: 'midfielder', label: 'Midfielder' },
+  { id: 'winger', label: 'Winger' },
+  { id: 'striker', label: 'Striker' },
 ]
 
-export default function Onboarding({ onComplete }) {
-  const [name, setName] = useState('')
+export default function Onboarding({ onComplete, user }) {
+  const [name, setName] = useState(user?.displayName || '')
   const [positions, setPositions] = useState([])
-  const [loading, setLoading] = useState(false)
+  const [photoURL, setPhotoURL] = useState(user?.photoURL || null)
+  const [loading, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const fileInputRef = useRef(null)
 
   const togglePosition = (id) => {
     setPositions((prev) =>
@@ -22,54 +24,64 @@ export default function Onboarding({ onComplete }) {
     )
   }
 
+  const handlePhotoChange = (e) => {
+    const file = e.target.files[0]
+    if (file) setPhotoURL(URL.createObjectURL(file))
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!name.trim()) return
-
-    setLoading(true)
+    setSaving(true)
+    setError('')
     try {
-      const user = auth.currentUser
-      if (user) {
-        await setDoc(doc(db, 'users', user.uid), {
-          name: name.trim(),
-          email: user.email,
-          photoURL: user.photoURL || null,
-          phone: user.phoneNumber || null,
-          preferredPositions: positions,
-          gamesAttended: 0,
-          gamesHosted: 0,
-          noShowRate: 0,
-          noShowCount: 0,
-          noShowTotal: 0,
-          friendUids: [],
-          profilePublic: true,
-          createdAt: new Date(),
-        })
-        await ensureUserCode(user.uid)
-      }
+      await setDoc(doc(db, 'users', user.uid), {
+        name: name.trim(),
+        photoURL: user?.photoURL || null,
+        email: user?.email || null,
+        preferredPositions: positions,
+        gamesAttended: 0,
+        gamesHosted: 0,
+        createdAt: new Date(),
+      })
       onComplete()
     } catch (err) {
       console.error('Error saving profile:', err)
-      alert('Failed to save profile. Please try again.')
-    } finally {
-      setLoading(false)
+      setError('Failed to save. Check your connection and try again.')
+      setSaving(false)
     }
   }
 
   return (
     <div style={styles.screen}>
       <div style={styles.content}>
-        <span style={styles.wordmark}>stado</span>
         <h1 style={styles.title}>Complete your profile</h1>
         <p style={styles.subtitle}>Tell us a bit about yourself</p>
 
-        <form style={styles.form} onSubmit={handleSubmit}>
+        <div style={styles.form}>
+          <div style={styles.photoSection}>
+            <button type="button" style={styles.photoBtn} onClick={() => fileInputRef.current?.click()}>
+              {photoURL ? (
+                <img src={photoURL} alt="Profile" style={styles.photo} />
+              ) : (
+                <div style={styles.photoPlaceholder}>
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#7A7A72" strokeWidth="1.5">
+                    <circle cx="12" cy="8" r="4" />
+                    <path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" />
+                  </svg>
+                </div>
+              )}
+              <span style={styles.photoLabel}>Add photo</span>
+            </button>
+            <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoChange} />
+          </div>
+
           <div style={styles.field}>
             <label style={styles.label}>Your name</label>
             <input
               style={styles.input}
               type="text"
-              placeholder="James Davidson"
+              placeholder="Your name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
@@ -93,141 +105,57 @@ export default function Onboarding({ onComplete }) {
                   onClick={() => togglePosition(pos.id)}
                   disabled={loading}
                 >
-                  <span style={{
-                    ...styles.positionIcon,
-                    background: positions.includes(pos.id) ? '#1D9E75' : '#E0DDD5',
-                    color: positions.includes(pos.id) ? 'white' : '#7A7A72',
+                  <div style={{
+                    ...styles.checkbox,
+                    background: positions.includes(pos.id) ? '#1D9E75' : 'white',
+                    borderColor: positions.includes(pos.id) ? '#1D9E75' : '#C9C6BC',
                   }}>
-                    {pos.icon}
-                  </span>
+                    {positions.includes(pos.id) && (
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
+                        <path d="M5 12l5 5L20 7" />
+                      </svg>
+                    )}
+                  </div>
                   <span style={styles.positionLabel}>{pos.label}</span>
                 </button>
               ))}
             </div>
           </div>
 
+          {error && <p style={styles.error}>{error}</p>}
+
           <button
             style={{ ...styles.button, opacity: loading ? 0.7 : 1 }}
-            type="submit"
+            onClick={handleSubmit}
             disabled={loading}
           >
             {loading ? 'Saving...' : 'Get started'}
           </button>
-        </form>
+        </div>
       </div>
     </div>
   )
 }
 
 const styles = {
-  screen: {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    background: '#F1EFE8',
-  },
-  content: {
-    flex: 1,
-    overflowY: 'auto',
-    padding: '48px 24px 32px',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-  },
-  wordmark: {
-    fontSize: '32px',
-    fontWeight: '700',
-    color: '#085041',
-    letterSpacing: '-0.5px',
-    marginBottom: '24px',
-  },
-  title: {
-    fontSize: '24px',
-    fontWeight: '700',
-    color: '#2C2C2A',
-    marginBottom: '8px',
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: '14px',
-    color: '#7A7A72',
-    marginBottom: '32px',
-    textAlign: 'center',
-  },
-  form: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '24px',
-    width: '100%',
-  },
-  field: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '6px',
-  },
-  label: {
-    fontSize: '14px',
-    fontWeight: '600',
-    color: '#2C2C2A',
-  },
-  fieldHint: {
-    fontSize: '12px',
-    color: '#7A7A72',
-    marginBottom: '4px',
-  },
-  input: {
-    width: '100%',
-    padding: '14px',
-    fontSize: '15px',
-    background: 'white',
-    border: '1px solid #E0DDD5',
-    borderRadius: '12px',
-    outline: 'none',
-    color: '#2C2C2A',
-    boxSizing: 'border-box',
-  },
-  positionGrid: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '10px',
-  },
-  positionBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-    padding: '12px 14px',
-    background: 'white',
-    border: '1px solid',
-    borderRadius: '12px',
-    cursor: 'pointer',
-    transition: 'all 0.15s ease',
-  },
-  positionIcon: {
-    width: '36px',
-    height: '36px',
-    borderRadius: '8px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: '11px',
-    fontWeight: '700',
-    letterSpacing: '0.02em',
-  },
-  positionLabel: {
-    fontSize: '15px',
-    fontWeight: '500',
-    color: '#2C2C2A',
-  },
-  button: {
-    width: '100%',
-    padding: '14px',
-    background: '#1D9E75',
-    color: 'white',
-    fontSize: '15px',
-    fontWeight: '600',
-    borderRadius: '12px',
-    border: 'none',
-    cursor: 'pointer',
-    marginTop: '16px',
-  },
+  screen: { flex: 1, display: 'flex', flexDirection: 'column', background: '#F1EFE8', minHeight: '100vh' },
+  content: { flex: 1, overflowY: 'auto', padding: '48px 24px 32px' },
+  title: { fontSize: '24px', fontWeight: '700', color: '#2C2C2A', marginBottom: '8px', textAlign: 'center' },
+  subtitle: { fontSize: '14px', color: '#7A7A72', marginBottom: '32px', textAlign: 'center' },
+  form: { display: 'flex', flexDirection: 'column', gap: '24px' },
+  photoSection: { display: 'flex', justifyContent: 'center' },
+  photoBtn: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', background: 'none', border: 'none', cursor: 'pointer', padding: 0 },
+  photo: { width: '96px', height: '96px', borderRadius: '50%', objectFit: 'cover', border: '3px solid #E0DDD5' },
+  photoPlaceholder: { width: '96px', height: '96px', borderRadius: '50%', background: 'white', border: '3px solid #E0DDD5', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  photoLabel: { fontSize: '13px', fontWeight: '500', color: '#1D9E75' },
+  field: { display: 'flex', flexDirection: 'column', gap: '6px' },
+  label: { fontSize: '14px', fontWeight: '600', color: '#2C2C2A' },
+  fieldHint: { fontSize: '12px', color: '#7A7A72', margin: '0 0 4px' },
+  input: { width: '100%', padding: '14px', fontSize: '15px', background: 'white', border: '1px solid #E0DDD5', borderRadius: '12px', outline: 'none', color: '#2C2C2A', boxSizing: 'border-box' },
+  positionGrid: { display: 'flex', flexDirection: 'column', gap: '10px' },
+  positionBtn: { display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', border: '1px solid', borderRadius: '12px', cursor: 'pointer' },
+  checkbox: { width: '22px', height: '22px', borderRadius: '6px', border: '2px solid', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  positionLabel: { fontSize: '15px', fontWeight: '500', color: '#2C2C2A' },
+  error: { fontSize: '13px', color: '#D63D3D', textAlign: 'center' },
+  button: { width: '100%', padding: '14px', background: '#1D9E75', color: 'white', fontSize: '15px', fontWeight: '600', borderRadius: '12px', border: 'none', cursor: 'pointer' },
 }
