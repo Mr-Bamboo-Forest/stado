@@ -207,7 +207,7 @@ export default function PostGame({ onBack, currentUser, userData }) {
               Use current
             </button>
           </div>
-          <input style={styles.input} type="text" placeholder="Park or field name (e.g. South Bank Parklands)"
+          <input style={styles.input} type="text" placeholder="Park name (e.g. South Bank Parklands)"
             value={form.location} onChange={(e) => handleChange('location', e.target.value)} required disabled={submitting} />
         </div>
 
