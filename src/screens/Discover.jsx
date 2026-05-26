@@ -592,10 +592,12 @@ const styles = {
   mapContainer: {
     flex: 1,
     position: 'relative',
+    minHeight: '400px',
   },
   map: {
     height: '100%',
     width: '100%',
+    minHeight: '400px',
   },
   filters: {
     display: 'flex',
