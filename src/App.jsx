@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { onAuthStateChanged } from 'firebase/auth'
+import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { auth, db } from './firebase'
 import SignIn from './screens/SignIn'
@@ -15,6 +15,10 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [screen, setScreen] = useState('discover')
   const [selectedGame, setSelectedGame] = useState(null)
+  const [showAuthPrompt, setShowAuthPrompt] = useState(false)
+  const [pendingAction, setPendingAction] = useState(null)
+
+  const isGuest = user && user.isAnonymous
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -51,6 +55,7 @@ export default function App() {
   }
 
   const handleSignInSuccess = () => {
+    setShowAuthPrompt(false)
   }
 
   const handleOnboardingComplete = async () => {
@@ -83,6 +88,32 @@ export default function App() {
         setUserData(userSnap.data())
       }
     }
+  }
+
+  const handlePostClick = () => {
+    if (isGuest) {
+      setPendingAction('post')
+      setShowAuthPrompt(true)
+    } else {
+      setScreen('post')
+    }
+  }
+
+  const handleJoinClick = () => {
+    if (isGuest) {
+      setPendingAction('join')
+      setShowAuthPrompt(true)
+      return false
+    }
+    return true
+  }
+
+  const handleAuthPromptClose = async () => {
+    setShowAuthPrompt(false)
+    if (pendingAction === 'post') {
+      setScreen('post')
+    }
+    setPendingAction(null)
   }
 
   if (loading) {
@@ -118,6 +149,7 @@ export default function App() {
           currentUser={user}
           userData={userData}
           onJoined={handleGameJoined}
+          onRequireAuth={handleJoinClick}
         />
       )}
       {screen === 'post' && (
@@ -138,13 +170,40 @@ export default function App() {
             active={screen === 'discover'}
             onClick={() => setScreen('discover')}
           />
-          <NavPostButton onClick={() => setScreen('post')} />
+          <NavPostButton onClick={handlePostClick} />
           <NavItem
             label="Profile"
             active={screen === 'profile'}
             onClick={() => setScreen('profile')}
           />
         </nav>
+      )}
+
+      {showAuthPrompt && (
+        <div style={styles.authPromptOverlay}>
+          <div style={styles.authPromptModal}>
+            <h3 style={styles.authPromptTitle}>Sign in required</h3>
+            <p style={styles.authPromptMessage}>
+              {pendingAction === 'post'
+                ? 'You need to create an account to post games.'
+                : 'You need to create an account to join games.'}
+            </p>
+            <div style={styles.authPromptButtons}>
+              <button
+                style={styles.authPromptCancel}
+                onClick={() => {
+                  setShowAuthPrompt(false)
+                  setPendingAction(null)
+                }}
+              >
+                Cancel
+              </button>
+              <button style={styles.authPromptSignIn} onClick={handleAuthPromptClose}>
+                Sign in
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -241,5 +300,65 @@ const styles = {
     fontSize: '11px',
     fontWeight: '600',
     color: '#1D9E75',
+  },
+  authPromptOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: 'rgba(0,0,0,0.5)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '24px',
+    zIndex: 1000,
+  },
+  authPromptModal: {
+    background: 'white',
+    borderRadius: '16px',
+    padding: '24px',
+    width: '100%',
+    maxWidth: '320px',
+  },
+  authPromptTitle: {
+    fontSize: '18px',
+    fontWeight: '600',
+    color: '#2C2C2A',
+    marginBottom: '12px',
+    textAlign: 'center',
+  },
+  authPromptMessage: {
+    fontSize: '14px',
+    color: '#7A7A72',
+    textAlign: 'center',
+    marginBottom: '20px',
+    lineHeight: '1.4',
+  },
+  authPromptButtons: {
+    display: 'flex',
+    gap: '12px',
+  },
+  authPromptCancel: {
+    flex: 1,
+    padding: '12px',
+    background: 'white',
+    color: '#555550',
+    fontSize: '15px',
+    fontWeight: '600',
+    borderRadius: '10px',
+    border: '1px solid #E0DDD5',
+    cursor: 'pointer',
+  },
+  authPromptSignIn: {
+    flex: 1,
+    padding: '12px',
+    background: '#1D9E75',
+    color: 'white',
+    fontSize: '15px',
+    fontWeight: '600',
+    borderRadius: '10px',
+    border: 'none',
+    cursor: 'pointer',
   },
 }

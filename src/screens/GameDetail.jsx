@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { doc, updateDoc, increment, getDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 
-export default function GameDetail({ game, onBack, currentUser, userData, onJoined }) {
+export default function GameDetail({ game, onBack, currentUser, userData, onJoined, onRequireAuth }) {
   const [joined, setJoined] = useState(false)
   const [loading, setLoading] = useState(false)
 
@@ -20,6 +20,11 @@ export default function GameDetail({ game, onBack, currentUser, userData, onJoin
 
   const handleJoin = async () => {
     if (!currentUser || !game?.id) return
+
+    if (currentUser.isAnonymous && onRequireAuth) {
+      const canProceed = onRequireAuth()
+      if (!canProceed) return
+    }
 
     setLoading(true)
     try {
