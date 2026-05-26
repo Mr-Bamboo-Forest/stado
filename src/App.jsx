@@ -115,8 +115,8 @@ export default function App() {
 
   const handleAuthPromptClose = async () => {
     setShowAuthPrompt(false)
-    if (pendingAction === 'post') setScreen('post')
     setPendingAction(null)
+    await signOut(auth)
   }
 
   if (loading) {
