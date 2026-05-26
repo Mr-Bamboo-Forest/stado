@@ -147,7 +147,7 @@ export default function App() {
   const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 769
 
   return (
-    <div style={styles.container}>
+    <div style={{...styles.container, ...(screen === 'post' || screen === 'profile' ? styles.containerWithPadding : {})}}>
       {screen === 'discover' && (
         <Discover
           key={discoverKey}
@@ -181,7 +181,7 @@ export default function App() {
 
       <nav style={{...styles.bottomNav, ...(isDesktop ? styles.bottomNavDesktop : {})}}>
         <NavItem label="Discover" active={screen === 'discover'} onClick={() => setScreen('discover')} />
-        <NavPostButton onClick={handlePostClick} />
+        <NavPostButton active={screen === 'post'} onClick={handlePostClick} />
         <NavItem label="Profile" active={screen === 'profile'} onClick={() => setScreen('profile')} />
       </nav>
 
@@ -220,11 +220,11 @@ function NavItem({ label, active, onClick }) {
   )
 }
 
-function NavPostButton({ onClick }) {
+function NavPostButton({ onClick, active }) {
   return (
-    <button style={styles.postButton} onClick={onClick}>
+    <button style={{ ...styles.postButton, color: active ? '#1D9E75' : '#7A7A72' }} onClick={onClick}>
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-        <rect x="3" y="3" width="18" height="18" rx="5" fill="#1D9E75" />
+        <rect x="3" y="3" width="18" height="18" rx="5" fill={active ? '#1D9E75' : '#7A7A72'} />
         <path d="M12 8v8M8 12h8" stroke="white" strokeWidth="2" strokeLinecap="round" />
       </svg>
       <span style={styles.postLabel}>Post</span>
@@ -244,6 +244,7 @@ const styles = {
     animation: 'pulse 1.2s ease-in-out infinite',
   },
   container: { flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', minHeight: '100vh' },
+  containerWithPadding: { paddingBottom: '100px' },
   bottomNav: {
     position: 'fixed', left: '16px', right: '16px', bottom: '16px',
     display: 'flex', alignItems: 'center', justifyContent: 'space-around',
@@ -257,7 +258,7 @@ const styles = {
   navItem: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', flex: 1, background: 'none', border: 'none', cursor: 'pointer' },
   navLabel: { fontSize: '11px', fontWeight: '500' },
   postButton: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', flex: 1, background: 'none', border: 'none', cursor: 'pointer' },
-  postLabel: { fontSize: '11px', fontWeight: '600', color: '#1D9E75' },
+  postLabel: { fontSize: '11px', fontWeight: '600' },
   authPromptOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', zIndex: 1000 },
   authPromptModal: { background: 'white', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '320px' },
   authPromptTitle: { fontSize: '18px', fontWeight: '600', color: '#2C2C2A', marginBottom: '12px', textAlign: 'center' },
