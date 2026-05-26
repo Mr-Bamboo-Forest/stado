@@ -58,7 +58,7 @@ export default function PostGame({ onBack, currentUser, userData }) {
     for (let i = 0; i < 6; i++) code += chars.charAt(Math.floor(Math.random() * chars.length))
     return code
   }
-
+  const isFormValid = !!(form.name.trim() && form.date && form.time && form.location && form.lat && form.lng)
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!isFormValid) return
