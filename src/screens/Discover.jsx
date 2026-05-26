@@ -1,224 +1,280 @@
-import React, { useState, useEffect } from "react";
-import { getMockGames, isConfigured, db } from "../firebase";
-import { collection, getDocs } from "firebase/firestore";
+import { useState, useEffect } from 'react'
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore'
+import { db } from '../firebase'
 
-// Helper function to calculate distances (Haversine formula)
-const getDistanceKm = (lat1, lon1, lat2, lon2) => {
-  if (!lat1 || !lon1 || !lat2 || !lon2) return null;
-  const R = 6371; // Earth radius
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return parseFloat((R * c).toFixed(1));
-};
-
-export default function Discover({ currentUser, onViewGame }) {
-  const [games, setGames] = useState([]);
-  const [filteredGames, setFilteredGames] = useState([]);
-  const [searchCode, setSearchCode] = useState("");
-  const [userLocation, setUserLocation] = useState(null);
-  const [sortBy, setSortBy] = useState("distance"); // distance, date
-  const [showPrivateOnly, setShowPrivateOnly] = useState(false);
+export default function Discover({ onGameClick }) {
+  const [filter, setFilter] = useState('Any Time')
+  const [games, setGames] = useState([])
 
   useEffect(() => {
-    // Fetch device coordinates
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setUserLocation({
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude
-          });
-        },
-        () => {
-          // Fallback to Melbourne central coordinates if permission denied
-          setUserLocation({ lat: -37.8136, lng: 144.9631 });
-        }
-      );
-    }
+    const q = query(collection(db, 'games'), orderBy('createdAt', 'desc'))
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const gamesData = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }))
+      setGames(gamesData)
+    })
+    return () => unsubscribe()
+  }, [])
 
-    fetchGames();
-  }, []);
-
-  const fetchGames = async () => {
-    let rawGames = [];
-    if (isConfigured) {
-      try {
-        const querySnapshot = await getDocs(collection(db, "games"));
-        querySnapshot.forEach((doc) => {
-          rawGames.push({ id: doc.id, ...doc.data() });
-        });
-      } catch (e) {
-        console.warn("Firestore read failed, falling back to mock", e);
-        rawGames = getMockGames();
-      }
-    } else {
-      rawGames = getMockGames();
-    }
-    setGames(rawGames);
-  };
-
-  useEffect(() => {
-    let result = [...games];
-
-    // Compute distance calculations for each match item
-    if (userLocation) {
-      result = result.map((game) => ({
-        ...game,
-        distance: getDistanceKm(userLocation.lat, userLocation.lng, game.lat, game.lng)
-      }));
-    }
-
-    // Process Search Query
-    if (searchCode.trim()) {
-      const q = searchCode.trim().toUpperCase();
-      result = result.filter(
-        (g) =>
-          g.name.toUpperCase().includes(q) ||
-          g.code === q ||
-          g.pitchName.toUpperCase().includes(q)
-      );
-    } else {
-      // Exclude private matches from main discover lists
-      result = result.filter((g) => !g.isPrivate);
-    }
-
-    // Sorting algorithms
-    if (sortBy === "distance") {
-      result.sort((a, b) => (a.distance || 0) - (b.distance || 0));
-    } else if (sortBy === "date") {
-      result.sort((a, b) => new Date(a.date + "T" + a.time) - new Date(b.date + "T" + b.time));
-    }
-
-    setFilteredGames(result);
-  }, [games, searchCode, sortBy, userLocation]);
+  const filteredGames = games.filter((game) => {
+    if (filter === 'Tonight') return game.date === 'Tonight'
+    if (filter === 'This Week') return game.date === 'Tonight' || game.date === 'Tomorrow'
+    return true
+  })
 
   return (
-    <div className="space-y-6">
-      {/* Title */}
-      <div>
-        <h1 className="text-3xl font-black tracking-tight text-[#2C2C2A]">stado</h1>
-        <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mt-0.5">
-          Find your game. Show up and play.
-        </p>
-      </div>
+    <div style={styles.screen}>
+      <header style={styles.header}>
+        <span style={styles.wordmark}>stado</span>
+        <button style={styles.profileBtn} aria-label="Profile">
+          <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+            <circle cx="16" cy="16" r="16" fill="#E0DDD5" />
+            <circle cx="16" cy="13" r="5" fill="#7A7A72" />
+            <path d="M6 26c0-5.523 4.477-10 10-10s10 4.477 10 10" fill="#7A7A72" />
+          </svg>
+        </button>
+      </header>
 
-      {/* Code Search bar & public-private filters */}
-      <div className="space-y-2">
-        <label className="block text-xs font-black uppercase tracking-wider text-gray-700">
-          Find public pitches or private access code
-        </label>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            placeholder="Search game or enter code (e.g., STADO-8921)"
-            value={searchCode}
-            onChange={(e) => setSearchCode(e.target.value)}
-            className="flex-1 bg-white border border-gray-300 rounded px-3 py-2 text-sm uppercase placeholder-normal text-[#2C2C2A] focus:outline-none focus:border-[#1D9E75]"
-          />
+      <div style={styles.content}>
+        <div style={styles.heading}>
+          <h1 style={styles.title}>Find a game</h1>
+          <p style={styles.subtitle}>Brisbane & surrounds</p>
         </div>
-      </div>
 
-      {/* Sorting Tabs */}
-      <div className="flex justify-between items-center border-b border-gray-300 pb-2">
-        <span className="text-xs font-black uppercase tracking-wider text-gray-500">
-          {filteredGames.length} MATCHES FOUND
-        </span>
-        <div className="flex gap-4">
-          <button
-            onClick={() => setSortBy("distance")}
-            className={`text-xs font-bold uppercase tracking-wider ${
-              sortBy === "distance" ? "text-[#1D9E75] border-b-2 border-[#1D9E75] pb-1" : "text-gray-500"
-            }`}
-          >
-            Closest
-          </button>
-          <button
-            onClick={() => setSortBy("date")}
-            className={`text-xs font-bold uppercase tracking-wider ${
-              sortBy === "date" ? "text-[#1D9E75] border-b-2 border-[#1D9E75] pb-1" : "text-gray-500"
-            }`}
-          >
-            Soonest
-          </button>
-        </div>
-      </div>
-
-      {/* Games List Container */}
-      <div className="space-y-3">
-        {filteredGames.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">
-            <p className="font-bold text-sm text-[#2C2C2A]">No games found matching criteria.</p>
-            <p className="text-xs mt-1">Try another search or post a new match.</p>
-          </div>
-        ) : (
-          filteredGames.map((game) => (
-            <div
-              key={game.id}
-              onClick={() => onViewGame(game.id)}
-              className="bg-white border border-gray-200 rounded-lg p-4 cursor-pointer hover:border-[#1D9E75] transition-all relative"
+        <div style={styles.filters}>
+          {['Tonight', 'This Week', 'Any Time'].map((f) => (
+            <button
+              key={f}
+              style={{
+                ...styles.chip,
+                background: filter === f ? '#085041' : 'white',
+                color: filter === f ? 'white' : '#555550',
+                borderColor: filter === f ? '#085041' : '#E0DDD5',
+              }}
+              onClick={() => setFilter(f)}
             >
-              {/* Featured priority highlight indicator */}
-              {game.isPriority && (
-                <span className="absolute top-3 right-3 bg-[#E1F5EE] text-[#085041] px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider">
-                  Featured
-                </span>
-              )}
+              {f}
+            </button>
+          ))}
+        </div>
 
-              {/* Pitch verified badge */}
-              {game.isVenueVerified && (
-                <span className="absolute top-3 right-24 bg-[#085041] text-white px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider">
-                  Verified Venue
-                </span>
-              )}
-
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <h3 className="font-black text-lg text-[#2C2C2A] leading-tight">
-                    {game.name}
-                  </h3>
-                  {game.isPrivate && (
-                    <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase">
-                      Private
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex items-center justify-between text-xs text-gray-600 font-bold">
-                  <div className="flex items-center gap-1.5">
-                    <span>{game.distance !== null ? `${game.distance} km away` : "Coarse Location"}</span>
-                    <span>•</span>
-                    <span>{game.pitchName}</span>
-                  </div>
-                  <span className="text-[#1D9E75]">
-                    {game.joinedPlayers.length} / {game.maxPlayers} Spots
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-center text-xs border-t border-gray-100 pt-2 text-gray-500">
-                  <div>
-                    {new Date(game.date).toLocaleDateString("en-AU", {
-                      weekday: "short",
-                      day: "numeric",
-                      month: "short"
-                    })}{" "}
-                    at {game.time}
-                  </div>
-                  <span className="text-[#1D9E75] font-black uppercase tracking-wider text-[11px]">
-                    VIEW DETAILS
-                  </span>
-                </div>
-              </div>
+        <div style={styles.list}>
+          {filteredGames.length === 0 ? (
+            <div style={styles.empty}>
+              <p style={styles.emptyText}>No games found</p>
             </div>
-          ))
-        )}
+          ) : (
+            filteredGames.map((game) => (
+              <GameCard key={game.id} game={game} onClick={() => onGameClick(game)} />
+            ))
+          )}
+        </div>
       </div>
     </div>
-  );
+  )
+}
+
+function GameCard({ game, onClick }) {
+  const spots = game.spotsRemaining || 0
+  let spotsStyle = styles.spotsGreen
+  if (spots >= 2 && spots <= 4) spotsStyle = styles.spotsAmber
+  if (spots === 1) spotsStyle = styles.spotsRed
+
+  return (
+    <article style={styles.card} onClick={onClick}>
+      <div style={styles.cardHeader}>
+        <div>
+          <h3 style={styles.cardName}>{game.name}</h3>
+          <span style={styles.format}>{game.format}</span>
+        </div>
+        <span style={{ ...styles.spotsBadge, ...spotsStyle }}>
+          {spots === 1 ? '1 spot left' : `${spots} spots left`}
+        </span>
+      </div>
+
+      <div style={styles.meta}>
+        <div style={styles.metaRow}>
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="#7A7A72" strokeWidth="1.25">
+            <path d="M6.5 1a3.75 3.75 0 0 1 3.75 3.75c0 2.625-3.75 7.25-3.75 7.25S2.75 7.375 2.75 4.75A3.75 3.75 0 0 1 6.5 1Z" />
+            <circle cx="6.5" cy="4.75" r="1.25" fill="#7A7A72" />
+          </svg>
+          <span style={styles.metaText}>{game.location}</span>
+          {game.distance && <span style={styles.distance}>{game.distance}</span>}
+        </div>
+        <div style={styles.metaRow}>
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="#7A7A72" strokeWidth="1.25">
+            <circle cx="6.5" cy="6.5" r="5" />
+            <path d="M6.5 4v2.5l1.5 1.5" strokeLinecap="round" />
+          </svg>
+          <span style={styles.metaText}>{game.date} {game.time}</span>
+        </div>
+        <div style={styles.metaRow}>
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="#7A7A72" strokeWidth="1.25">
+            <circle cx="6.5" cy="4.5" r="2" />
+            <path d="M2 11c0-2.485 2.015-4.5 4.5-4.5S11 8.515 11 11" strokeLinecap="round" />
+          </svg>
+          <span style={styles.metaText}>Hosted by <strong>{game.host}</strong></span>
+        </div>
+      </div>
+
+      <button style={styles.joinBtn}>Join game</button>
+    </article>
+  )
+}
+
+const styles = {
+  screen: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+  },
+  header: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '16px 20px 12px',
+    flexShrink: 0,
+  },
+  wordmark: {
+    fontSize: '24px',
+    fontWeight: '700',
+    letterSpacing: '-0.5px',
+    color: '#085041',
+  },
+  profileBtn: {
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+  },
+  content: {
+    flex: 1,
+    overflowY: 'auto',
+    paddingBottom: '12px',
+  },
+  heading: {
+    padding: '8px 20px 4px',
+  },
+  title: {
+    fontSize: '28px',
+    fontWeight: '700',
+    letterSpacing: '-0.8px',
+    color: '#2C2C2A',
+  },
+  subtitle: {
+    fontSize: '14px',
+    color: '#7A7A72',
+    marginTop: '3px',
+  },
+  filters: {
+    display: 'flex',
+    gap: '8px',
+    padding: '12px 20px 16px',
+    flexShrink: 0,
+  },
+  chip: {
+    padding: '8px 16px',
+    borderRadius: '100px',
+    fontSize: '14px',
+    fontWeight: '500',
+    border: '1.5px solid',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+  list: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+    padding: '0 16px 16px',
+  },
+  card: {
+    background: 'white',
+    borderRadius: '16px',
+    padding: '16px',
+    border: '1px solid #E0DDD5',
+    cursor: 'pointer',
+  },
+  cardHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: '12px',
+  },
+  cardName: {
+    fontSize: '16px',
+    fontWeight: '600',
+    letterSpacing: '-0.2px',
+    marginBottom: '4px',
+  },
+  format: {
+    fontSize: '12px',
+    fontWeight: '500',
+    color: '#7A7A72',
+    background: '#F1EFE8',
+    padding: '3px 8px',
+    borderRadius: '6px',
+  },
+  spotsBadge: {
+    fontSize: '12px',
+    fontWeight: '600',
+    padding: '4px 10px',
+    borderRadius: '100px',
+  },
+  spotsGreen: {
+    background: '#E1F5EE',
+    color: '#0A6B4E',
+  },
+  spotsAmber: {
+    background: '#FAEEDA',
+    color: '#9B5E00',
+  },
+  spotsRed: {
+    background: '#FCEBEB',
+    color: '#A02020',
+  },
+  meta: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '7px',
+    marginBottom: '12px',
+  },
+  metaRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    fontSize: '13.5px',
+    color: '#555550',
+  },
+  metaText: {
+    flex: 1,
+  },
+  distance: {
+    fontSize: '12px',
+    color: '#7A7A72',
+    background: '#F1EFE8',
+    padding: '2px 7px',
+    borderRadius: '5px',
+  },
+  joinBtn: {
+    width: '100%',
+    padding: '11px 0',
+    background: '#1D9E75',
+    color: 'white',
+    fontSize: '14px',
+    fontWeight: '600',
+    borderRadius: '10px',
+    border: 'none',
+    cursor: 'pointer',
+  },
+  empty: {
+    textAlign: 'center',
+    padding: '48px 20px',
+  },
+  emptyText: {
+    fontSize: '17px',
+    fontWeight: '600',
+    color: '#2C2C2A',
+  },
 }

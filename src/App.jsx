@@ -1,179 +1,185 @@
-import React, { useState, useEffect } from "react";
-import Discover from "./screens/Discover";
-import GameDetail from "./screens/GameDetail";
-import Onboarding from "./screens/Onboarding";
-import PostGame from "./screens/PostGame";
-import Profile from "./screens/Profile";
-import SignIn from "./screens/SignIn";
-import { auth, isConfigured, getMockAuthUser } from "./firebase";
-import { onAuthStateChanged } from "firebase/auth";
+import { useState, useEffect } from 'react'
+import { onAuthStateChanged } from 'firebase/auth'
+import { doc, getDoc } from 'firebase/firestore'
+import { auth, db } from './firebase'
+import SignIn from './screens/SignIn'
+import Onboarding from './screens/Onboarding'
+import Discover from './screens/Discover'
+import GameDetail from './screens/GameDetail'
+import PostGame from './screens/PostGame'
+import Profile from './screens/Profile'
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [currentScreen, setCurrentScreen] = useState("discover"); // discover, post, profile, detail
-  const [selectedGameId, setSelectedGameId] = useState(null);
-  const [isOnboarded, setIsOnboarded] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null)
+  const [hasProfile, setHasProfile] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [screen, setScreen] = useState('discover')
+  const [selectedGame, setSelectedGame] = useState(null)
 
   useEffect(() => {
-    // Check local storage for onboarding completion
-    const onboardedValue = localStorage.getItem("stado_onboarded");
-    if (onboardedValue === "true") {
-      setIsOnboarded(true);
-    }
-
-    if (isConfigured) {
-      const unsubscribe = onAuthStateChanged(auth, (user) => {
-        if (user) {
-          // Normalise firebase user
-          setCurrentUser({
-            uid: user.uid,
-            displayName: user.displayName || localStorage.getItem("temp_display_name") || "Player",
-            email: user.email,
-            photoURL: user.photoURL || null,
-            tier: localStorage.getItem(`stado_tier_${user.uid}`) || "Free",
-            completedGames: 0,
-            noShows: 0
-          });
-        } else {
-          setCurrentUser(null);
-        }
-        setLoading(false);
-      });
-      return unsubscribe;
-    } else {
-      // Mock Auth management
-      const mockUser = getMockAuthUser();
-      if (mockUser) {
-        setCurrentUser(mockUser);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        setUser(firebaseUser)
+        const profileSnap = await getDoc(doc(db, 'users', firebaseUser.uid))
+        setHasProfile(profileSnap.exists())
+      } else {
+        setUser(null)
+        setHasProfile(null)
       }
-      setLoading(false);
-    }
-  }, []);
+      setLoading(false)
+    })
+    return () => unsubscribe()
+  }, [])
 
-  const handleOnboardingComplete = (userData) => {
-    localStorage.setItem("stado_onboarded", "true");
-    setIsOnboarded(true);
-    if (userData && !currentUser) {
-      // Temporary cache preferences
-      localStorage.setItem("temp_user_preferences", JSON.stringify(userData));
-    }
-  };
+  const goToGame = (game) => {
+    setSelectedGame(game)
+    setScreen('detail')
+  }
 
-  const handleSignOut = () => {
-    if (isConfigured) {
-      auth.signOut();
-    } else {
-      localStorage.removeItem("stado_current_user");
-      setCurrentUser(null);
-    }
-    setCurrentScreen("discover");
-  };
+  const goBack = () => {
+    setSelectedGame(null)
+    setScreen('discover')
+  }
+
+  const handleSignInSuccess = () => {
+  }
+
+  const handleOnboardingComplete = () => {
+    setHasProfile(true)
+  }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#F1EFE8] text-[#2C2C2A]">
-        <div className="text-center font-bold text-lg animate-pulse tracking-wide">stado</div>
+      <div style={styles.loading}>
+        <span style={styles.wordmark}>stado</span>
       </div>
-    );
+    )
   }
 
-  // 1. Force Onboarding if first time open
-  if (!isOnboarded) {
-    return <Onboarding onComplete={handleOnboardingComplete} />;
+  if (!user) {
+    return <SignIn onSuccess={handleSignInSuccess} />
   }
 
-  // 2. Auth Guard
-  if (!currentUser) {
-    return (
-      <SignIn 
-        onAuthSuccess={(user) => setCurrentUser(user)} 
-        onBackToDiscover={() => setIsOnboarded(false)} 
-      />
-    );
+  if (!hasProfile) {
+    return <Onboarding onComplete={handleOnboardingComplete} />
   }
-
-  // Navigation router helper
-  const renderScreen = () => {
-    switch (currentScreen) {
-      case "discover":
-        return (
-          <Discover 
-            currentUser={currentUser}
-            onViewGame={(gameId) => {
-              setSelectedGameId(gameId);
-              setCurrentScreen("detail");
-            }} 
-          />
-        );
-      case "detail":
-        return (
-          <GameDetail 
-            gameId={selectedGameId} 
-            currentUser={currentUser}
-            onBack={() => setCurrentScreen("discover")} 
-          />
-        );
-      case "post":
-        return (
-          <PostGame 
-            currentUser={currentUser}
-            onSuccess={() => setCurrentScreen("discover")} 
-          />
-        );
-      case "profile":
-        return (
-          <Profile 
-            currentUser={currentUser} 
-            onUpdateUser={(updated) => setCurrentUser(updated)}
-            onSignOut={handleSignOut} 
-          />
-        );
-      default:
-        return <Discover onViewGame={(gameId) => { setSelectedGameId(gameId); setCurrentScreen("detail"); }} />;
-    }
-  };
 
   return (
-    <div className="min-h-screen bg-gray-900 flex justify-center items-start overflow-x-hidden">
-      {/* Mobile-first constraints frame */}
-      <div className="w-full max-w-md min-h-screen bg-[#F1EFE8] text-[#2C2C2A] flex flex-col relative pb-20 shadow-2xl">
-        
-        {/* Main Application Body */}
-        <main className="flex-1 w-full px-5 pt-6">
-          {renderScreen()}
-        </main>
+    <div style={styles.container}>
+      {screen === 'discover' && <Discover onGameClick={goToGame} />}
+      {screen === 'detail' && <GameDetail game={selectedGame} onBack={goBack} />}
+      {screen === 'post' && <PostGame onBack={() => setScreen('discover')} />}
+      {screen === 'profile' && <Profile onBack={() => setScreen('discover')} />}
 
-        {/* Global Bottom Navigation Bar */}
-        <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-[#F1EFE8] border-t border-gray-300 h-16 flex justify-around items-center z-50">
-          <button 
-            onClick={() => setCurrentScreen("discover")}
-            className={`flex flex-col items-center justify-center flex-1 h-full ${
-              currentScreen === "discover" || currentScreen === "detail" ? "text-[#1D9E75]" : "text-[#2C2C2A]"
-            }`}
-          >
-            <span className="text-xs font-bold tracking-wider">DISCOVER</span>
-          </button>
-          
-          <button 
-            onClick={() => setCurrentScreen("post")}
-            className={`flex flex-col items-center justify-center flex-1 h-full ${
-              currentScreen === "post" ? "text-[#1D9E75]" : "text-[#2C2C2A]"
-            }`}
-          >
-            <span className="text-xs font-bold tracking-wider">POST GAME</span>
-          </button>
-          
-          <button 
-            onClick={() => setCurrentScreen("profile")}
-            className={`flex flex-col items-center justify-center flex-1 h-full ${
-              currentScreen === "profile" ? "text-[#1D9E75]" : "text-[#2C2C2A]"
-            }`}
-          >
-            <span className="text-xs font-bold tracking-wider">PROFILE</span>
-          </button>
+      {screen !== 'detail' && (
+        <nav style={styles.bottomNav}>
+          <NavItem
+            label="Discover"
+            active={screen === 'discover'}
+            onClick={() => setScreen('discover')}
+          />
+          <NavPostButton onClick={() => setScreen('post')} />
+          <NavItem
+            label="Profile"
+            active={screen === 'profile'}
+            onClick={() => setScreen('profile')}
+          />
         </nav>
-      </div>
+      )}
     </div>
-  );
+  )
+}
+
+function NavItem({ label, active, onClick }) {
+  return (
+    <button style={{
+      ...styles.navItem,
+      color: active ? '#1D9E75' : '#7A7A72',
+    }} onClick={onClick}>
+      {label === 'Discover' ? (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <circle cx="11" cy="11" r="8" />
+          <path d="M21 21l-4.35-4.35" />
+        </svg>
+      ) : (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <circle cx="12" cy="8" r="4" />
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+        </svg>
+      )}
+      <span style={styles.navLabel}>{label}</span>
+    </button>
+  )
+}
+
+function NavPostButton({ onClick }) {
+  return (
+    <button style={styles.postButton} onClick={onClick}>
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+        <rect x="3" y="3" width="18" height="18" rx="5" fill="#1D9E75" />
+        <path d="M12 8v8M8 12h8" stroke="white" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+      <span style={styles.postLabel}>Post</span>
+    </button>
+  )
+}
+
+const styles = {
+  loading: {
+    flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#F1EFE8',
+  },
+  wordmark: {
+    fontSize: '32px',
+    fontWeight: '700',
+    letterSpacing: '-0.5px',
+    color: '#085041',
+  },
+  container: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    position: 'relative',
+  },
+  bottomNav: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    background: 'white',
+    borderTop: '1px solid #E0DDD5',
+    padding: '12px 8px 24px',
+    flexShrink: 0,
+  },
+  navItem: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '4px',
+    flex: 1,
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+  },
+  navLabel: {
+    fontSize: '11px',
+    fontWeight: '500',
+  },
+  postButton: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '4px',
+    flex: 1,
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+  },
+  postLabel: {
+    fontSize: '11px',
+    fontWeight: '600',
+    color: '#1D9E75',
+  },
 }
