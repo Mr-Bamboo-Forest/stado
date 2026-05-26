@@ -282,7 +282,7 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '20px',
-    paddingBottom: 'calc(20px + env(safe-area-inset-bottom))',
+    paddingBottom: 'calc(100px + env(safe-area-inset-bottom))',
   },
   hero: {
     background: 'white',
