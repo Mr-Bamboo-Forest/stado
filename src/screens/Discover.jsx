@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { collection, onSnapshot, query, orderBy, where, getDocs } from 'firebase/firestore'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
@@ -100,7 +100,7 @@ function formatDate(dateStr, timeStr) {
   }
 }
 
-export default function Discover({ onGameClick, userData, onJoinWithCode, onProfileClick }) {
+export default function Discover({ onGameClick, userData, onJoinWithCode, onProfileClick, onHomeClick }) {
   const [viewMode, setViewMode] = useState('map')
   const [games, setGames] = useState([])
   const [userCoords, setUserCoords] = useState(null)
@@ -110,6 +110,11 @@ export default function Discover({ onGameClick, userData, onJoinWithCode, onProf
   const [joinCodeInput, setJoinCodeInput] = useState('')
   const [joinCodeValid, setJoinCodeValid] = useState(null)
   const [showMyGames, setShowMyGames] = useState(false)
+  const [nearbyAlert, setNearbyAlert] = useState('')
+  const userCoordsRef = useRef(userCoords)
+  const prevGameIdsRef = useRef([])
+  const initialLoadRef = useRef(true)
+  const nearbyAlertTimerRef = useRef(null)
 
   useEffect(() => {
     const q = query(collection(db, 'games'), orderBy('createdAt', 'desc'))
@@ -120,6 +125,28 @@ export default function Discover({ onGameClick, userData, onJoinWithCode, onProf
           ...doc.data(),
         }))
         .filter((game) => game.isPublic !== false)
+
+      if (!initialLoadRef.current) {
+        const previousIds = prevGameIdsRef.current
+        const newGames = gamesData.filter((game) => !previousIds.includes(game.id))
+        if (newGames.length && userCoordsRef.current) {
+          const nearbyGame = newGames.find(
+            (game) => getGameDistanceWithCoords(game, userCoordsRef.current) <= 5
+          )
+          if (nearbyGame) {
+            setNearbyAlert(`New game posted near you: ${nearbyGame.name}`)
+            if (nearbyAlertTimerRef.current) {
+              clearTimeout(nearbyAlertTimerRef.current)
+            }
+            nearbyAlertTimerRef.current = window.setTimeout(() => {
+              setNearbyAlert('')
+            }, 6000)
+          }
+        }
+      }
+
+      prevGameIdsRef.current = gamesData.map((game) => game.id)
+      initialLoadRef.current = false
       setGames(gamesData)
     })
     return () => unsubscribe()
@@ -143,9 +170,26 @@ export default function Discover({ onGameClick, userData, onJoinWithCode, onProf
     }
   }, [])
 
+  useEffect(() => {
+    userCoordsRef.current = userCoords
+  }, [userCoords])
+
+  useEffect(() => {
+    return () => {
+      if (nearbyAlertTimerRef.current) {
+        clearTimeout(nearbyAlertTimerRef.current)
+      }
+    }
+  }, [])
+
   const getGameDistance = (game) => {
     if (!userCoords || !game.lat || !game.lng) return Infinity
     return haversineDistance(userCoords.lat, userCoords.lng, game.lat, game.lng)
+  }
+
+  const getGameDistanceWithCoords = (game, coords) => {
+    if (!coords || !game.lat || !game.lng) return Infinity
+    return haversineDistance(coords.lat, coords.lng, game.lat, game.lng)
   }
 
   const getDistanceLimit = () => {
@@ -199,7 +243,9 @@ const gamesWithDistance = games
   return (
     <div style={styles.screen}>
       <header style={styles.header}>
-        <span style={styles.wordmark}>stado</span>
+        <button style={styles.wordmarkBtn} onClick={onHomeClick} aria-label="Go to discover">
+          <span style={styles.wordmark}>stado</span>
+        </button>
         <button style={styles.profileBtn} aria-label="Profile" onClick={onProfileClick}>
           {userData?.photoURL ? (
             <img src={userData.photoURL} alt="Profile" style={styles.avatar} />
@@ -247,6 +293,12 @@ const gamesWithDistance = games
               <path d="M12 8v4M12 16h.01" />
             </svg>
             <span>Showing games near Brisbane — enable location for local results</span>
+          </div>
+        )}
+
+        {nearbyAlert && (
+          <div style={styles.nearbyAlert}>
+            <p style={styles.nearbyAlertText}>{nearbyAlert}</p>
           </div>
         )}
 
@@ -524,6 +576,12 @@ const styles = {
     padding: '16px 20px 12px',
     flexShrink: 0,
   },
+  wordmarkBtn: {
+    background: 'none',
+    border: 'none',
+    padding: 0,
+    cursor: 'pointer',
+  },
   wordmark: {
     fontSize: '24px',
     fontWeight: '700',
@@ -743,6 +801,20 @@ const styles = {
   emptyHint: {
     fontSize: '14px',
     color: '#7A7A72',
+  },
+  nearbyAlert: {
+    margin: '0 16px 12px',
+    padding: '14px 16px',
+    background: '#E1F5FF',
+    border: '1px solid #A8D1FF',
+    borderRadius: '14px',
+  },
+  nearbyAlertText: {
+    margin: 0,
+    color: '#084B8A',
+    fontSize: '14px',
+    lineHeight: '1.5',
+    fontWeight: '600',
   },
   modalOverlay: {
     position: 'fixed',

@@ -15,6 +15,7 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [screen, setScreen] = useState('discover')
   const [selectedGame, setSelectedGame] = useState(null)
+  const [discoverKey, setDiscoverKey] = useState(0)
   const [showAuthPrompt, setShowAuthPrompt] = useState(false)
   const [pendingAction, setPendingAction] = useState(null)
 
@@ -61,6 +62,12 @@ export default function App() {
 
   const goToGame = (game) => { setSelectedGame(game); setScreen('detail') }
   const goBack = () => { setSelectedGame(null); setScreen('discover') }
+  const goHome = () => {
+    if (screen === 'discover') {
+      setDiscoverKey((prev) => prev + 1)
+    }
+    setScreen('discover')
+  }
 
   const handleSignInSuccess = () => setShowAuthPrompt(false)
 
@@ -141,7 +148,9 @@ export default function App() {
     <div style={styles.container}>
       {screen === 'discover' && (
         <Discover
+          key={discoverKey}
           onGameClick={goToGame}
+          onHomeClick={goHome}
           userData={userData}
           onJoinWithCode={(game) => { setSelectedGame(game); setScreen('detail') }}
           onProfileClick={() => setScreen('profile')}
@@ -168,13 +177,11 @@ export default function App() {
         />
       )}
 
-      {screen !== 'detail' && (
-        <nav style={styles.bottomNav}>
-          <NavItem label="Discover" active={screen === 'discover'} onClick={() => setScreen('discover')} />
-          <NavPostButton onClick={handlePostClick} />
-          <NavItem label="Profile" active={screen === 'profile'} onClick={() => setScreen('profile')} />
-        </nav>
-      )}
+      <nav style={styles.bottomNav}>
+        <NavItem label="Discover" active={screen === 'discover'} onClick={() => setScreen('discover')} />
+        <NavPostButton onClick={handlePostClick} />
+        <NavItem label="Profile" active={screen === 'profile'} onClick={() => setScreen('profile')} />
+      </nav>
 
       {showAuthPrompt && (
         <div style={styles.authPromptOverlay}>
@@ -234,11 +241,12 @@ const styles = {
     width: '8px', height: '8px', borderRadius: '50%', background: '#1D9E75',
     animation: 'pulse 1.2s ease-in-out infinite',
   },
-  container: { flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', minHeight: '100vh' },
+  container: { flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', minHeight: '100vh', paddingBottom: '84px' },
   bottomNav: {
+    position: 'fixed', left: 0, right: 0, bottom: 0,
     display: 'flex', alignItems: 'center', justifyContent: 'space-around',
     background: 'white', borderTop: '1px solid #E0DDD5',
-    padding: '12px 8px calc(12px + env(safe-area-inset-bottom))', flexShrink: 0,
+    padding: '12px 8px calc(12px + env(safe-area-inset-bottom))', zIndex: 50,
   },
   navItem: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', flex: 1, background: 'none', border: 'none', cursor: 'pointer' },
   navLabel: { fontSize: '11px', fontWeight: '500' },
