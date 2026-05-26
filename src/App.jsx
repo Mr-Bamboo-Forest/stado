@@ -144,6 +144,8 @@ export default function App() {
     return <Onboarding onComplete={handleOnboardingComplete} user={user} />
   }
 
+  const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 769
+
   return (
     <div style={styles.container}>
       {screen === 'discover' && (
@@ -177,7 +179,7 @@ export default function App() {
         />
       )}
 
-      <nav style={styles.bottomNav}>
+      <nav style={{...styles.bottomNav, ...(isDesktop ? styles.bottomNavDesktop : {})}}>
         <NavItem label="Discover" active={screen === 'discover'} onClick={() => setScreen('discover')} />
         <NavPostButton onClick={handlePostClick} />
         <NavItem label="Profile" active={screen === 'profile'} onClick={() => setScreen('profile')} />
@@ -247,6 +249,10 @@ const styles = {
     display: 'flex', alignItems: 'center', justifyContent: 'space-around',
     background: 'white', borderTop: '1px solid #E0DDD5',
     padding: '12px 8px calc(12px + env(safe-area-inset-bottom))', zIndex: 50,
+  },
+  bottomNavDesktop: {
+    position: 'fixed', left: '50%', right: 'auto', transform: 'translateX(-50%)', bottom: '16px',
+    width: '390px', borderRadius: '40px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
   },
   navItem: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', flex: 1, background: 'none', border: 'none', cursor: 'pointer' },
   navLabel: { fontSize: '11px', fontWeight: '500' },
