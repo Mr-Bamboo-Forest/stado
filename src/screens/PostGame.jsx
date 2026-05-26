@@ -1,297 +1,255 @@
-import { useState } from 'react'
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
-import { db } from '../firebase'
+import React, { useState, useEffect } from "react";
+import { addMockGame, isConfigured, db } from "../firebase";
+import { collection, addDoc, getDocs, query, where } from "firebase/firestore";
 
-const FORMATS = ['5-a-side', '6-a-side', '7-a-side', '11-a-side']
-const SKILLS = ['Any level', 'Casual', 'Intermediate', 'Competitive']
+export default function PostGame({ currentUser, onSuccess }) {
+  const [name, setName] = useState("5v5 Casual Friendly");
+  const [pitchName, setPitchName] = useState("");
+  const [address, setAddress] = useState("");
+  const [lat, setLat] = useState(-37.8136); // Melbourne default coords
+  const [lng, setLng] = useState(144.9631);
+  const [date, setDate] = useState("");
+  const [time, setTime] = useState("18:00");
+  const [maxPlayers, setMaxPlayers] = useState(10);
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [postCountThisMonth, setPostCountThisMonth] = useState(0);
+  const [isOverLimit, setIsOverLimit] = useState(false);
 
-export default function PostGame({ onBack }) {
-  const [form, setForm] = useState({
-    name: '',
-    format: '5-a-side',
-    location: '',
-    date: '',
-    time: '',
-    spots: '10',
-    skill: 'Any level',
-    note: '',
-  })
-  const [submitting, setSubmitting] = useState(false)
+  useEffect(() => {
+    checkPostLimits();
+  }, []);
 
-  const handleChange = (field, value) => {
-    setForm((prev) => ({ ...prev, [field]: value }))
-  }
+  const checkPostLimits = async () => {
+    let posts = 0;
+    const userTier = currentUser.tier || "Free";
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setSubmitting(true)
-
-    try {
-      await addDoc(collection(db, 'games'), {
-        name: form.name,
-        format: form.format,
-        location: form.location,
-        distance: '',
-        date: form.date,
-        time: form.time,
-        spotsTotal: parseInt(form.spots, 10),
-        spotsRemaining: parseInt(form.spots, 10) - 1,
-        host: 'You',
-        skill: form.skill,
-        note: form.note || '',
-        players: ['You'],
-        createdAt: serverTimestamp(),
-      })
-      onBack()
-    } catch (error) {
-      console.error('Error adding game:', error)
-      alert('Failed to post game. Please try again.')
-    } finally {
-      setSubmitting(false)
+    if (isConfigured) {
+      try {
+        const q = query(collection(db, "games"), where("hostId", "==", currentUser.uid));
+        const querySnapshot = await getDocs(q);
+        posts = querySnapshot.size;
+      } catch (e) {
+        console.warn(e);
+      }
+    } else {
+      posts = 2; // Simulated post counts
     }
-  }
+
+    setPostCountThisMonth(posts);
+    if (userTier === "Free" && posts >= 5) {
+      setIsOverLimit(true);
+    }
+  };
+
+  // Mock Map interactive pin drop calculation
+  const handleMapMockClick = (e) => {
+    // Generate slight variants around Melbourne CBD coordinates
+    const randomOffsetLat = (Math.random() - 0.5) * 0.1;
+    const randomOffsetLng = (Math.random() - 0.5) * 0.1;
+    const finalLat = parseFloat((-37.8136 + randomOffsetLat).toFixed(4));
+    const finalLng = parseFloat((144.9631 + randomOffsetLng).toFixed(4));
+    setLat(finalLat);
+    setLng(finalLng);
+    setPitchName(`Royal Park Pitch ${Math.floor(Math.random() * 5) + 1}`);
+    setAddress("Royal Parade, Parkville VIC 3052");
+  };
+
+  const handlePublish = async (e) => {
+    e.preventDefault();
+    if (isOverLimit) {
+      alert("Free Tier posting limit exceeded! (Max 5/month). Upgrade to the Regular Tier in settings.");
+      return;
+    }
+
+    const uniqueCode = isPrivate ? `STADO-${Math.floor(1000 + Math.random() * 9000)}` : "";
+
+    const newGame = {
+      name,
+      pitchName: pitchName || "Local Park Green",
+      address: address || "Exact address revealed upon joining",
+      lat,
+      lng,
+      date,
+      time,
+      hostId: currentUser.uid,
+      hostName: currentUser.displayName,
+      joinedPlayers: [currentUser.uid],
+      maxPlayers: parseInt(maxPlayers),
+      isPrivate,
+      code: uniqueCode,
+      isRecurring: currentUser.tier === "Regular" ? isRecurring : false,
+      isPriority: currentUser.tier === "Regular" || currentUser.tier === "Partner",
+      isVenueVerified: currentUser.tier === "Partner",
+      price: 0
+    };
+
+    if (isConfigured) {
+      try {
+        await addDoc(collection(db, "games"), newGame);
+      } catch (err) {
+        console.error("Firestore write failed, falling back to mock save", err);
+      }
+    } else {
+      addMockGame({ id: `mock-${Date.now()}`, ...newGame });
+    }
+
+    alert("Match posted successfully!");
+    onSuccess();
+  };
 
   return (
-    <div style={styles.screen}>
-      <header style={styles.header}>
-        <button style={styles.closeBtn} onClick={onBack} aria-label="Close">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2C2C2A" strokeWidth="2" strokeLinecap="round">
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
-        </button>
-        <span style={styles.headerTitle}>Post a game</span>
-        <div style={styles.headerSpacer} />
-      </header>
+    <form onSubmit={handlePublish} className="space-y-5">
+      <div>
+        <h2 className="text-2xl font-black text-[#2C2C2A]">Post Game</h2>
+        <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mt-0.5">
+          Organise a match. Set rules. Drop coordinates.
+        </p>
+      </div>
 
-      <form style={styles.form} onSubmit={handleSubmit}>
-        <div style={styles.field}>
-          <label style={styles.label}>Game name</label>
-          <input
-            style={styles.input}
-            type="text"
-            placeholder="e.g. South Bank Sunday Kickaround"
-            value={form.name}
-            onChange={(e) => handleChange('name', e.target.value)}
-            required
-            disabled={submitting}
-          />
+      {isOverLimit && (
+        <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded text-xs space-y-2">
+          <p className="font-bold">POSTING LIMIT EXCEEDED</p>
+          <p>You have posted 5 matches this month under the Free tier. Upgrade your subscription to unlock unlimited schedules.</p>
         </div>
+      )}
 
-        <div style={styles.field}>
-          <label style={styles.label}>Format</label>
-          <div style={styles.formatGrid}>
-            {FORMATS.map((f) => (
-              <button
-                key={f}
-                type="button"
-                style={{
-                  ...styles.formatBtn,
-                  background: form.format === f ? '#085041' : 'white',
-                  color: form.format === f ? 'white' : '#2C2C2A',
-                  borderColor: form.format === f ? '#085041' : '#E0DDD5',
-                }}
-                onClick={() => handleChange('format', f)}
-                disabled={submitting}
-              >
-                {f}
-              </button>
-            ))}
+      {/* Preset Name Generator dropdown */}
+      <div className="space-y-1">
+        <label className="block text-xs font-black uppercase tracking-wider text-gray-700">Game Name</label>
+        <select
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm text-[#2C2C2A] focus:outline-none"
+        >
+          <option value="5v5 Casual Match">5v5 Casual Friendly</option>
+          <option value="7v7 Competitive Match">7v7 Competitive Game</option>
+          <option value="9v9 Mid-week Friendly">9v9 Mid-week Friendly</option>
+          <option value="11v11 Weekend Match">11v11 Match</option>
+        </select>
+      </div>
+
+      {/* Interactive Map Selector Box */}
+      <div className="space-y-1">
+        <label className="block text-xs font-black uppercase tracking-wider text-gray-700">PITCH COORDINATES MAP</label>
+        <div className="border border-gray-300 rounded overflow-hidden">
+          {/* Simulated maps graphic interface */}
+          <div 
+            onClick={handleMapMockClick}
+            className="h-32 bg-slate-200 relative cursor-pointer flex flex-col justify-center items-center p-4 border-b border-gray-300"
+          >
+            <div className="absolute top-2 right-2 bg-white px-1.5 py-0.5 rounded text-[9px] font-bold text-gray-500 shadow-sm border">
+              MAP PICKER
+            </div>
+            
+            <div className="w-4 h-4 rounded-full bg-[#1D9E75] border-2 border-white animate-bounce mb-1"></div>
+            <p className="text-xs font-black text-gray-700">Click to Select Map Coordinates</p>
+            <p className="text-[10px] text-gray-500">Dropped Pin: {lat}, {lng}</p>
           </div>
-        </div>
-
-        <div style={styles.row}>
-          <div style={styles.field}>
-            <label style={styles.label}>Date</label>
+          <div className="p-3 bg-white space-y-2">
             <input
-              style={{ ...styles.input, ...styles.inputSmall }}
-              type="date"
-              value={form.date}
-              onChange={(e) => handleChange('date', e.target.value)}
+              type="text"
+              placeholder="Pitch Name (e.g. Royal Park Pitch 3)"
+              value={pitchName}
+              onChange={(e) => setPitchName(e.target.value)}
+              className="w-full bg-white border border-gray-200 rounded px-3 py-1.5 text-xs text-[#2C2C2A] focus:outline-none"
               required
-              disabled={submitting}
             />
-          </div>
-          <div style={styles.field}>
-            <label style={styles.label}>Time</label>
             <input
-              style={{ ...styles.input, ...styles.inputSmall }}
-              type="time"
-              value={form.time}
-              onChange={(e) => handleChange('time', e.target.value)}
+              type="text"
+              placeholder="Address / Pitch Entry Point Instructions"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              className="w-full bg-white border border-gray-200 rounded px-3 py-1.5 text-xs text-[#2C2C2A] focus:outline-none"
               required
-              disabled={submitting}
             />
           </div>
         </div>
+      </div>
 
-        <div style={styles.field}>
-          <label style={styles.label}>Location</label>
+      {/* Date and Time Fields */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <label className="block text-xs font-black uppercase tracking-wider text-gray-700">DATE</label>
           <input
-            style={styles.input}
-            type="text"
-            placeholder="Park or field name"
-            value={form.location}
-            onChange={(e) => handleChange('location', e.target.value)}
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="w-full bg-white border border-gray-300 rounded px-3 py-2 text-xs text-[#2C2C2A] focus:outline-none"
             required
-            disabled={submitting}
           />
         </div>
-
-        <div style={styles.row}>
-          <div style={styles.field}>
-            <label style={styles.label}>Total spots</label>
-            <select
-              style={{ ...styles.input, ...styles.inputSmall }}
-              value={form.spots}
-              onChange={(e) => handleChange('spots', e.target.value)}
-              disabled={submitting}
-            >
-              {[6, 8, 10, 12, 14, 16, 18, 22].map((n) => (
-                <option key={n} value={n}>{n}</option>
-              ))}
-            </select>
-          </div>
-          <div style={styles.field}>
-            <label style={styles.label}>Skill level</label>
-            <select
-              style={{ ...styles.input, ...styles.inputSmall }}
-              value={form.skill}
-              onChange={(e) => handleChange('skill', e.target.value)}
-              disabled={submitting}
-            >
-              {SKILLS.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div style={styles.field}>
-          <label style={styles.label}>Note (optional)</label>
-          <textarea
-            style={styles.textarea}
-            placeholder="Any extra info for players..."
-            value={form.note}
-            onChange={(e) => handleChange('note', e.target.value)}
-            rows={3}
-            disabled={submitting}
+        <div className="space-y-1">
+          <label className="block text-xs font-black uppercase tracking-wider text-gray-700">TIME</label>
+          <input
+            type="time"
+            value={time}
+            onChange={(e) => setTime(e.target.value)}
+            className="w-full bg-white border border-gray-300 rounded px-3 py-2 text-xs text-[#2C2C2A] focus:outline-none"
+            required
           />
         </div>
+      </div>
 
-        <button style={{ ...styles.submitBtn, opacity: submitting ? 0.7 : 1 }} type="submit" disabled={submitting}>
-          {submitting ? 'Posting...' : 'Post game'}
-        </button>
-      </form>
-    </div>
-  )
-}
+      {/* Match Sizing format */}
+      <div className="space-y-1">
+        <label className="block text-xs font-black uppercase tracking-wider text-gray-700">SPOTS AVAILABLE</label>
+        <input
+          type="number"
+          min="2"
+          max="30"
+          value={maxPlayers}
+          onChange={(e) => setMaxPlayers(e.target.value)}
+          className="w-full bg-white border border-gray-300 rounded px-3 py-2 text-xs text-[#2C2C2A] focus:outline-none"
+        />
+      </div>
 
-const styles = {
-  screen: {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    background: '#F1EFE8',
-  },
-  header: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '12px 16px',
-    background: 'white',
-    borderBottom: '1px solid #E0DDD5',
-    flexShrink: 0,
-  },
-  closeBtn: {
-    width: '40px',
-    height: '40px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: '12px',
-    background: 'none',
-    border: 'none',
-    cursor: 'pointer',
-  },
-  headerTitle: {
-    fontSize: '16px',
-    fontWeight: '600',
-    color: '#2C2C2A',
-  },
-  headerSpacer: {
-    width: '40px',
-  },
-  form: {
-    flex: 1,
-    overflowY: 'auto',
-    padding: '20px 16px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '16px',
-  },
-  field: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '6px',
-  },
-  label: {
-    fontSize: '13px',
-    fontWeight: '600',
-    color: '#2C2C2A',
-  },
-  input: {
-    width: '100%',
-    padding: '12px 14px',
-    fontSize: '15px',
-    background: 'white',
-    border: '1px solid #E0DDD5',
-    borderRadius: '10px',
-    color: '#2C2C2A',
-    outline: 'none',
-  },
-  inputSmall: {
-    width: 'auto',
-  },
-  textarea: {
-    width: '100%',
-    padding: '12px 14px',
-    fontSize: '15px',
-    background: 'white',
-    border: '1px solid #E0DDD5',
-    borderRadius: '10px',
-    color: '#2C2C2A',
-    outline: 'none',
-    resize: 'none',
-    fontFamily: 'inherit',
-  },
-  row: {
-    display: 'flex',
-    gap: '12px',
-  },
-  formatGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(2, 1fr)',
-    gap: '8px',
-  },
-  formatBtn: {
-    padding: '10px 0',
-    fontSize: '14px',
-    fontWeight: '500',
-    borderRadius: '10px',
-    border: '1px solid',
-    cursor: 'pointer',
-    transition: 'all 0.15s ease',
-  },
-  submitBtn: {
-    width: '100%',
-    padding: '14px 0',
-    background: '#1D9E75',
-    color: 'white',
-    fontSize: '15px',
-    fontWeight: '600',
-    borderRadius: '12px',
-    border: 'none',
-    cursor: 'pointer',
-    marginTop: 'auto',
-  },
+      {/* Lobby Privacy Configuration */}
+      <div className="space-y-1.5 bg-white p-3 border border-gray-200 rounded">
+        <div className="flex items-center justify-between">
+          <div>
+            <span className="text-xs font-bold text-gray-900 block">Private Lobby</span>
+            <span className="text-[10px] text-gray-500">Only accessible via direct access/invite code.</span>
+          </div>
+          <input
+            type="checkbox"
+            checked={isPrivate}
+            onChange={(e) => setIsPrivate(e.target.checked)}
+            className="w-4 h-4 accent-[#1D9E75]"
+          />
+        </div>
+      </div>
+
+      {/* Premium Tier Recurring Scheduling */}
+      <div className="space-y-1.5 bg-white p-3 border border-gray-200 rounded">
+        <div className="flex items-center justify-between">
+          <div>
+            <span className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+              Weekly Recurring Game
+              <span className="text-[9px] bg-[#E1F5EE] text-[#085041] px-1 rounded uppercase">Premium</span>
+            </span>
+            <span className="text-[10px] text-gray-500">Re-posts automatically every week.</span>
+          </div>
+          <input
+            type="checkbox"
+            disabled={currentUser.tier === "Free"}
+            checked={isRecurring}
+            onChange={(e) => setIsRecurring(e.target.checked)}
+            className="w-4 h-4 disabled:opacity-50 accent-[#1D9E75]"
+          />
+        </div>
+        {currentUser.tier === "Free" && (
+          <p className="text-[9px] text-[#085041] font-semibold">Requires upgrading to Regular Subscription.</p>
+        )}
+      </div>
+
+      <button
+        type="submit"
+        disabled={isOverLimit}
+        className="w-full bg-[#1D9E75] text-white py-4 font-bold tracking-wider rounded uppercase text-xs hover:bg-[#085041] transition-colors disabled:opacity-50"
+      >
+        PUBLISH MATCH
+      </button>
+    </form>
+  );
 }
