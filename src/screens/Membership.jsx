@@ -28,7 +28,7 @@ export default function Membership({ onBack, userData, currentUser, onUpdateUser
   useEffect(() => {
     const checkStripe = async () => {
       try {
-        const { loadStripe } = await import('@stripe/js')
+        const { loadStripe } = await import('@stripe/stripe-js')
         if (loadStripe && import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY) {
           setStripeLoaded(true)
         }
@@ -88,8 +88,8 @@ export default function Membership({ onBack, userData, currentUser, onUpdateUser
 
       // If a valid session is created, redirect your browser window to Stripe's secure checkout page
       if (data.sessionId) {
-        // Loads Stripe dynamically using your installed @stripe/js library parameters
-        const { loadStripe } = await import('@stripe/js');
+        // Loads Stripe dynamically using your installed @stripe/stripe-js library parameters
+        const { loadStripe } = await import('@stripe/stripe-js');
         const stripe = await loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
         
         await stripe.redirectToCheckout({ sessionId: data.sessionId });

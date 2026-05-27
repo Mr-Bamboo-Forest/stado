@@ -5,7 +5,7 @@ let stripePromise = null;
 
 const getStripe = async () => {
   if (!stripePromise) {
-    const { loadStripe } = await import('@stripe/js');
+    const { loadStripe } = await import('@stripe/stripe-js');
     stripePromise = loadStripe(STRIPE_PUBLISHABLE_KEY);
   }
   return stripePromise;
