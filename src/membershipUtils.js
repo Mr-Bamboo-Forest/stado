@@ -1,4 +1,21 @@
-// Membership tier definitions and utilities
+/**
+ * membershipUtils.js
+ *
+ * Single source of truth for membership logic on the client.
+ *
+ * SECURITY RULES:
+ *   - The client ONLY reads membership data from Firestore.
+ *   - Membership tier and expiry are ONLY written by the Stripe webhook
+ *     serverless function (api/stripeWebhook.js). Never write these fields
+ *     from the client.
+ *   - All feature gates here must be mirrored by Firestore Security Rules
+ *     and/or Cloud Functions that re-verify tier server-side before acting.
+ */
+
+// ---------------------------------------------------------------------------
+// Tier definitions
+// ---------------------------------------------------------------------------
+
 export const MEMBERSHIP_TIERS = {
   FREE: {
     id: 'free',
@@ -59,139 +76,144 @@ export const MEMBERSHIP_TIERS = {
   },
 }
 
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
 /**
- * Get the user's current membership tier
- * @param {Object} userData - User document from Firebase
- * @returns {Object} Current tier object
+ * Safely coerce a Firestore Timestamp, JS Date, or ISO string to a JS Date.
+ * Returns null if value is missing or unparseable.
+ */
+function toDate(value) {
+  if (!value) return null
+  // Firestore Timestamp object
+  if (typeof value.toDate === 'function') return value.toDate()
+  // Already a JS Date
+  if (value instanceof Date) return isNaN(value.getTime()) ? null : value
+  // ISO string or epoch number
+  const d = new Date(value)
+  return isNaN(d.getTime()) ? null : d
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/**
+ * Get the user's current membership tier object.
+ * Always returns a valid tier (defaults to FREE).
  */
 export const getUserTier = (userData) => {
-  if (!userData?.membership?.tier) {
-    return MEMBERSHIP_TIERS.FREE
-  }
-  return MEMBERSHIP_TIERS[userData.membership.tier.toUpperCase()] || MEMBERSHIP_TIERS.FREE
+  const tierKey = userData?.membership?.tier?.toUpperCase()
+  return MEMBERSHIP_TIERS[tierKey] ?? MEMBERSHIP_TIERS.FREE
 }
 
 /**
- * Check if membership is still active (hasn't expired)
- * @param {Object} userData - User document from Firebase
- * @returns {boolean}
+ * Check whether the user's paid membership has not yet expired.
+ * Free tier is always considered "active" (it never expires).
+ * Paid tiers require a valid, future expiresAt timestamp in Firestore.
  */
 export const isMembershipActive = (userData) => {
-  if (!userData?.membership) return false
-  if (userData.membership.tier === 'FREE') return true // Free tier never expires
-  
-  const expiresAt = userData.membership.expiresAt
+  const tier = getUserTier(userData)
+
+  if (tier.id === 'free') return true
+
+  const expiresAt = toDate(userData?.membership?.expiresAt)
   if (!expiresAt) return false
-  
-  const expireDate = expiresAt instanceof Date ? expiresAt : expiresAt.toDate?.()
-  return new Date() < expireDate
+
+  return new Date() < expiresAt
 }
 
 /**
- * Check if user can post a game
- * @param {Object} userData - User document from Firebase
- * @returns {Object} { canPost: boolean, reason?: string, postsUsed: number, postsRemaining: number }
+ * Derive the effective (enforced) tier, accounting for expiry.
+ * If a paid membership has lapsed, the user is downgraded to FREE
+ * until Stripe renews and the webhook updates Firestore.
+ */
+export const getEffectiveTier = (userData) => {
+  const tier = getUserTier(userData)
+  if (tier.id === 'free') return MEMBERSHIP_TIERS.FREE
+  return isMembershipActive(userData) ? tier : MEMBERSHIP_TIERS.FREE
+}
+
+/**
+ * Check whether the user has a specific feature, respecting expiry.
+ */
+export const hasFeature = (userData, featureName) => {
+  const tier = getEffectiveTier(userData)
+  return tier.features[featureName] ?? false
+}
+
+/**
+ * Check whether the user can post a game this month.
+ * Returns { canPost, postsUsed, postsRemaining, reason? }
  */
 export const canPostGame = (userData) => {
-  const tier = getUserTier(userData)
-  const isActive = isMembershipActive(userData)
-  
-  // If membership exists but expired, treat as free
-  const effectiveTier = !isActive && userData?.membership?.tier ? MEMBERSHIP_TIERS.FREE : tier
-  
-  const postsRemaining = effectiveTier.features.postsPerMonth
-  const postsUsed = userData?.monthlyPostsUsed || 0
-  
-  if (postsRemaining === Infinity) {
+  const tier = getEffectiveTier(userData)
+  const postsLimit = tier.features.postsPerMonth
+  const postsUsed = userData?.monthlyPostsUsed ?? 0
+
+  if (postsLimit === Infinity) {
     return { canPost: true, postsUsed, postsRemaining: Infinity }
   }
-  
-  const canPost = postsUsed < postsRemaining
+
+  const canPost = postsUsed < postsLimit
   return {
     canPost,
     postsUsed,
-    postsRemaining,
-    reason: canPost ? null : `You've reached your ${postsRemaining} games/month limit. Upgrade to post unlimited games.`,
+    postsRemaining: postsLimit,
+    reason: canPost
+      ? null
+      : `You've reached your ${postsLimit} games/month limit. Upgrade to post unlimited games.`,
   }
 }
 
 /**
- * Check if user has a specific feature
- * @param {Object} userData - User document from Firebase
- * @param {string} featureName - Feature key from tier.features
- * @returns {boolean}
- */
-export const hasFeature = (userData, featureName) => {
-  const tier = getUserTier(userData)
-  const isActive = isMembershipActive(userData)
-  
-  // If membership expired, use free tier
-  if (!isActive && userData?.membership?.tier) {
-    return MEMBERSHIP_TIERS.FREE.features[featureName] || false
-  }
-  
-  return tier.features[featureName] || false
-}
-
-/**
- * Get days remaining for current membership
- * @param {Object} userData - User document from Firebase
- * @returns {number} Days remaining, or -1 if inactive/free
+ * Get days remaining on the current paid membership.
+ * Returns -1 for free tier, 0 if expired.
  */
 export const getDaysRemaining = (userData) => {
-  if (!userData?.membership || userData.membership.tier === 'FREE') return -1
+  const tier = getUserTier(userData)
+  if (tier.id === 'free') return -1
   if (!isMembershipActive(userData)) return 0
-  
-  const expiresAt = userData.membership.expiresAt
-  const expireDate = expiresAt instanceof Date ? expiresAt : expiresAt.toDate?.()
-  const today = new Date()
-  const diff = expireDate.getTime() - today.getTime()
-  return Math.ceil(diff / (1000 * 3600 * 24))
+
+  const expiresAt = toDate(userData?.membership?.expiresAt)
+  if (!expiresAt) return 0
+
+  const diff = expiresAt.getTime() - Date.now()
+  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)))
 }
 
 /**
- * Format membership status for display
- * @param {Object} userData - User document from Firebase
- * @returns {string}
+ * Human-readable membership status for UI display.
  */
 export const getMembershipStatusText = (userData) => {
   const tier = getUserTier(userData)
-  
-  if (tier.id === 'free') {
-    return 'Free tier'
-  }
-  
-  const isActive = isMembershipActive(userData)
-  if (!isActive) {
-    return `${tier.name} (expired)`
-  }
-  
-  const daysLeft = getDaysRemaining(userData)
-  if (daysLeft > 0) {
-    return `${tier.name} • ${daysLeft} days left`
-  }
-  
+
+  if (tier.id === 'free') return 'Free plan'
+
+  if (!isMembershipActive(userData)) return `${tier.name} (expired)`
+
+  const days = getDaysRemaining(userData)
+  if (days > 0) return `${tier.name} · ${days} day${days === 1 ? '' : 's'} left`
+
   return tier.name
 }
 
 /**
- * Reset monthly post counter (should be called by scheduled job on 1st of month)
- * @param {string} userId - User ID
- * @returns {Promise} Firebase update promise
+ * All tiers as an array, for rendering comparison tables.
  */
-export const resetMonthlyPosts = (userId) => {
-  // This will be called by a Cloud Function or scheduled task
-  // For now, just return the config needed
-  return {
-    monthlyPostsUsed: 0,
-    lastPostsResetDate: new Date(),
-  }
-}
+export const getAllTiers = () => [
+  MEMBERSHIP_TIERS.FREE,
+  MEMBERSHIP_TIERS.PRIORITY,
+  MEMBERSHIP_TIERS.REGULAR,
+]
 
 /**
- * Get all membership tier options for display
- * @returns {Array} Array of tier objects
+ * Stub used by the client to inform the UI of the monthly reset config.
+ * Actual reset is performed server-side by a Cloud Function or cron job
+ * calling the logic in resetMonthlyPosts.js.
  */
-export const getAllTiers = () => {
-  return [MEMBERSHIP_TIERS.FREE, MEMBERSHIP_TIERS.PRIORITY, MEMBERSHIP_TIERS.REGULAR]
-}
+export const resetMonthlyPosts = () => ({
+  monthlyPostsUsed: 0,
+  lastPostsResetDate: new Date(),
+})

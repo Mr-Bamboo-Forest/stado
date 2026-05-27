@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { getAuth, signOut } from 'firebase/auth'
 import { doc, getDoc, collection, query, where, getDocs, updateDoc, deleteDoc } from 'firebase/firestore'
 import { db } from '../firebase'
-import { getUserTier } from '../membershipUtils'
+import { getUserTier, isMembershipActive, getDaysRemaining } from '../membershipUtils'
+import MembershipBadge from '../components/membershipBadge'
 
 export default function Profile({ onBack, userData, onUpdateUser, currentUser, onViewProfile, onShowMembership }) {
   const auth = getAuth()
@@ -14,7 +15,6 @@ export default function Profile({ onBack, userData, onUpdateUser, currentUser, o
   const [findResult, setFindResult] = useState(null)
   const [findError, setFindError] = useState('')
   const [copied, setCopied] = useState(false)
-  const [copiedOwnCode, setCopiedOwnCode] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -54,21 +54,16 @@ export default function Profile({ onBack, userData, onUpdateUser, currentUser, o
 
   const handleAcceptFriend = async (request) => {
     try {
-      // Update request status
       await updateDoc(doc(db, 'friendRequests', request.id), { status: 'accepted' })
-      // Add each to other's friends list
       await updateDoc(doc(db, 'users', user.uid), {
         friends: [...(userData?.friends || []), request.fromUid]
       })
       await updateDoc(doc(db, 'users', request.fromUid), {
         friends: [...(request.fromUser?.friends || []), user.uid]
       })
-      // Delete the request
       await deleteDoc(doc(db, 'friendRequests', request.id))
-      // Refresh
       fetchFriendRequests()
       fetchFriends()
-      // Update local userData
       onUpdateUser({ ...userData, friends: [...(userData?.friends || []), request.fromUid] })
     } catch (e) { console.error(e) }
   }
@@ -102,14 +97,6 @@ export default function Profile({ onBack, userData, onUpdateUser, currentUser, o
   const handleCopyCode = () => {
     if (userData?.userCode) {
       navigator.clipboard.writeText(userData.userCode)
-      setCopiedOwnCode(true)
-      setTimeout(() => setCopiedOwnCode(false), 2000)
-    }
-  }
-
-  const handleCopyCodeToClipboard = () => {
-    if (userData?.userCode) {
-      navigator.clipboard.writeText(userData.userCode)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     }
@@ -124,6 +111,14 @@ export default function Profile({ onBack, userData, onUpdateUser, currentUser, o
   const rate = noShowRate()
   const initial = user?.displayName?.charAt(0)?.toUpperCase() || userData?.name?.charAt(0)?.toUpperCase() || '?'
   const currentTier = getUserTier(userData)
+  const membershipActive = isMembershipActive(userData)
+  const daysLeft = getDaysRemaining(userData)
+
+  // Membership card label and call-to-action text
+  const membershipCta = currentTier.id === 'free' ? 'Upgrade' : 'Manage'
+
+  // Expired paid plan warning
+  const showExpiredWarning = currentTier.id !== 'free' && !membershipActive
 
   return (
     <div style={styles.screen}>
@@ -139,17 +134,31 @@ export default function Profile({ onBack, userData, onUpdateUser, currentUser, o
           ) : (
             <div style={styles.avatar}>{initial}</div>
           )}
-          <h2 style={styles.name}>{userData?.name || user?.displayName || 'Player'}</h2>
+
+          {/* Name + badge on the same line */}
+          <div style={styles.nameRow}>
+            <h2 style={styles.name}>{userData?.name || user?.displayName || 'Player'}</h2>
+            <MembershipBadge userData={userData} size="md" />
+          </div>
+
           <p style={styles.email}>{user?.email}</p>
-          
-          {/* User Code - Share with Friends */}
+
           {userData?.userCode && (
             <div style={styles.codeSection}>
               <p style={styles.codeLabel}>Your friend code</p>
               <div style={styles.codeDisplay}>
                 <p style={styles.codeValue}>{userData.userCode}</p>
-                <button style={styles.copyCodeBtn} onClick={handleCopyCodeToClipboard}>
-                  {copied ? '✓' : '📋'}
+                <button style={styles.copyCodeBtn} onClick={handleCopyCode}>
+                  {copied ? (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1D9E75" strokeWidth="2.5">
+                      <path d="M5 12l5 5L20 7" />
+                    </svg>
+                  ) : (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7A7A72" strokeWidth="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2" />
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                    </svg>
+                  )}
                 </button>
               </div>
               <p style={styles.codeHint}>Share this code so friends can add you</p>
@@ -157,20 +166,33 @@ export default function Profile({ onBack, userData, onUpdateUser, currentUser, o
           )}
         </div>
 
-        {/* Membership Status */}
-        <div style={styles.membershipCard}>
-          <div style={styles.membershipHeader}>
-            <div>
-              <p style={styles.membershipLabel}>Membership</p>
-              <p style={styles.membershipTier}>
-                {currentTier.name}
-                {currentTier.id !== 'free' && ' ⭐'}
-              </p>
-            </div>
-            <button style={styles.upgradeMembershipBtn} onClick={onShowMembership}>
-              Manage
-            </button>
+        {/* Membership card */}
+        <div style={{
+          ...styles.membershipCard,
+          borderColor: showExpiredWarning ? '#E0A0A0' : currentTier.id !== 'free' ? '#1D9E75' : '#E0DDD5',
+          background: showExpiredWarning ? '#FCEBEB' : currentTier.id !== 'free' ? '#E1F5EE' : 'white',
+        }}>
+          <div style={styles.membershipLeft}>
+            <p style={styles.membershipLabel}>Membership</p>
+            <p style={{
+              ...styles.membershipTier,
+              color: showExpiredWarning ? '#A02020' : currentTier.id !== 'free' ? '#085041' : '#2C2C2A',
+            }}>
+              {showExpiredWarning ? `${currentTier.name} (expired)` : currentTier.name}
+            </p>
+            {!showExpiredWarning && currentTier.id !== 'free' && daysLeft > 0 && (
+              <p style={styles.membershipDays}>{daysLeft} day{daysLeft === 1 ? '' : 's'} remaining</p>
+            )}
+            {showExpiredWarning && (
+              <p style={styles.membershipExpiredNote}>Renew to restore premium features</p>
+            )}
           </div>
+          <button style={{
+            ...styles.upgradeMembershipBtn,
+            background: showExpiredWarning ? '#A02020' : '#1D9E75',
+          }} onClick={onShowMembership}>
+            {showExpiredWarning ? 'Renew' : membershipCta}
+          </button>
         </div>
 
         {/* Stats */}
@@ -238,7 +260,7 @@ export default function Profile({ onBack, userData, onUpdateUser, currentUser, o
           <div style={styles.findRow}>
             <input
               style={styles.findInput}
-              placeholder="Enter player code e.g. XK92BT"
+              placeholder="Enter code e.g. XK92BT"
               value={findCode}
               onChange={(e) => setFindCode(e.target.value.toUpperCase().slice(0, 6))}
               maxLength={6}
@@ -247,7 +269,7 @@ export default function Profile({ onBack, userData, onUpdateUser, currentUser, o
           </div>
           {findError && <p style={styles.findError}>{findError}</p>}
           {findResult && (
-            <div style={styles.findResult} onClick={() => { setShowFindPlayer(false); onViewProfile && onViewProfile(findResult.uid) }}>
+            <div style={styles.findResult} onClick={() => { onViewProfile && onViewProfile(findResult.uid) }}>
               <div style={styles.friendAvatar}>{findResult.name?.charAt(0)?.toUpperCase()}</div>
               <span style={styles.friendName}>{findResult.name}</span>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1D9E75" strokeWidth="2"><path d="M9 18l6-6-6-6" /></svg>
@@ -272,23 +294,29 @@ const styles = {
   header: { padding: '16px 20px 12px' },
   wordmark: { fontSize: '24px', fontWeight: '700', letterSpacing: '-0.5px', color: '#085041' },
   content: { flex: 1, overflowY: 'auto', padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: '16px' },
+
   profileCard: { background: 'white', borderRadius: '16px', padding: '24px 20px', border: '1px solid #E0DDD5', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' },
   avatar: { width: '72px', height: '72px', borderRadius: '50%', background: '#1D9E75', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', fontWeight: '700', marginBottom: '12px' },
   avatarImg: { width: '72px', height: '72px', borderRadius: '50%', objectFit: 'cover', marginBottom: '12px' },
-  name: { fontSize: '20px', fontWeight: '700', color: '#2C2C2A', margin: '0 0 4px' },
+
+  nameRow: { display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '4px' },
+  name: { fontSize: '20px', fontWeight: '700', color: '#2C2C2A', margin: 0 },
   email: { fontSize: '13px', color: '#7A7A72', margin: '0 0 12px' },
+
   codeSection: { width: '100%', marginTop: '12px' },
   codeLabel: { fontSize: '11px', fontWeight: '600', color: '#888780', textTransform: 'uppercase', margin: '0 0 8px', letterSpacing: '0.5px' },
   codeDisplay: { display: 'flex', alignItems: 'center', gap: '8px', background: '#F1EFE8', borderRadius: '10px', padding: '10px 12px', marginBottom: '6px' },
   codeValue: { flex: 1, fontSize: '16px', fontWeight: '700', letterSpacing: '3px', color: '#085041', margin: 0, textTransform: 'uppercase' },
-  copyCodeBtn: { background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', padding: '0 4px' },
+  copyCodeBtn: { background: 'none', border: 'none', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center' },
   codeHint: { fontSize: '11px', color: '#7A7A72', margin: 0, textAlign: 'center', fontStyle: 'italic' },
 
-  membershipCard: { background: 'white', borderRadius: '16px', padding: '16px', border: '1px solid #E0DDD5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
-  membershipHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' },
-  membershipLabel: { fontSize: '12px', fontWeight: '600', color: '#888780', textTransform: 'uppercase', margin: 0, marginBottom: '4px', letterSpacing: '0.4px' },
+  membershipCard: { background: 'white', borderRadius: '16px', padding: '16px', border: '1px solid #E0DDD5', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', transition: 'border-color 0.2s' },
+  membershipLeft: { display: 'flex', flexDirection: 'column', gap: '2px' },
+  membershipLabel: { fontSize: '11px', fontWeight: '600', color: '#888780', textTransform: 'uppercase', margin: 0, letterSpacing: '0.4px' },
   membershipTier: { fontSize: '16px', fontWeight: '700', color: '#2C2C2A', margin: 0 },
-  upgradeMembershipBtn: { padding: '8px 14px', background: '#1D9E75', color: 'white', fontSize: '13px', fontWeight: '600', borderRadius: '8px', border: 'none', cursor: 'pointer' },
+  membershipDays: { fontSize: '12px', color: '#1D9E75', margin: 0, fontWeight: '500' },
+  membershipExpiredNote: { fontSize: '12px', color: '#A02020', margin: 0, fontWeight: '500' },
+  upgradeMembershipBtn: { padding: '9px 16px', background: '#1D9E75', color: 'white', fontSize: '13px', fontWeight: '600', borderRadius: '8px', border: 'none', cursor: 'pointer', flexShrink: 0 },
 
   statsRow: { display: 'flex', gap: '8px' },
   stat: { flex: 1, background: 'white', borderRadius: '12px', padding: '12px', border: '1px solid #E0DDD5', textAlign: 'center' },

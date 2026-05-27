@@ -24,27 +24,39 @@ export default function App() {
   const [pendingAction, setPendingAction] = useState(null)
   const [hasSeenOnboarding, setHasSeenOnboarding] = useState(false)
   const [checkingOnboarding, setCheckingOnboarding] = useState(true)
+  const [paymentBanner, setPaymentBanner] = useState(null)
 
   const isGuest = user && user.isAnonymous
 
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const paymentStatus = urlParams.get('payment');
+    const urlParams = new URLSearchParams(window.location.search)
+    const paymentStatus = urlParams.get('payment')
+    if (!paymentStatus) return
+
+    window.history.replaceState({}, document.title, '/')
 
     if (paymentStatus === 'success') {
-      alert('Welcome to Stado Premium! Your membership is active.');
-      window.history.replaceState({}, document.title, "/");
-      
-      if (user) {
-        getDoc(doc(db, 'users', user.uid)).then((userSnap) => {
-          if (userSnap.exists()) setUserData(userSnap.data());
-        }).catch(err => console.error(err));
-      }
-    } else if (paymentStatus === 'cancelled') {
-      alert('Payment cancelled. You can try upgrading again whenever you are ready.');
-      window.history.replaceState({}, document.title, "/");
+      setPaymentBanner('success')
+      const timer = setTimeout(async () => {
+        if (user) {
+          try {
+            const userSnap = await getDoc(doc(db, 'users', user.uid))
+            if (userSnap.exists()) setUserData(userSnap.data())
+          } catch (err) {
+            console.error('Post-payment re-fetch failed:', err)
+          }
+        }
+        setTimeout(() => setPaymentBanner(null), 5000)
+      }, 3000)
+      return () => clearTimeout(timer)
     }
-  }, [user]);
+
+    if (paymentStatus === 'cancelled') {
+      setPaymentBanner('cancelled')
+      setTimeout(() => setPaymentBanner(null), 5000)
+    }
+  }, [user])
+
   useEffect(() => {
     const onboardingSeen = localStorage.getItem('stado_onboarding_seen')
     setHasSeenOnboarding(!!onboardingSeen)
@@ -153,7 +165,6 @@ export default function App() {
   }
 
   const handleMembershipBack = async () => {
-    // Refresh user data after membership changes
     if (user) {
       try {
         const userSnap = await getDoc(doc(db, 'users', user.uid))
@@ -235,6 +246,17 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {paymentBanner && (
+        <div style={{
+          ...styles.banner,
+          background: paymentBanner === 'success' ? '#085041' : '#555550',
+        }}>
+          {paymentBanner === 'success'
+            ? 'Welcome to Stado Premium!'
+            : 'Payment cancelled. You can upgrade anytime.'}
+        </div>
+      )}
     </div>
   )
 }
@@ -288,4 +310,5 @@ const styles = {
   authPromptButtons: { display: 'flex', gap: '12px' },
   authPromptCancel: { flex: 1, padding: '12px', background: 'white', color: '#555550', fontSize: '15px', fontWeight: '600', borderRadius: '10px', border: '1px solid #E0DDD5', cursor: 'pointer' },
   authPromptSignIn: { flex: 1, padding: '12px', background: '#1D9E75', color: 'white', fontSize: '15px', fontWeight: '600', borderRadius: '10px', border: 'none', cursor: 'pointer' },
+  banner: { position: 'fixed', top: '16px', left: '50%', transform: 'translateX(-50%)', zIndex: 2000, color: 'white', borderRadius: '12px', padding: '12px 20px', fontSize: '14px', fontWeight: '600', boxShadow: '0 4px 16px rgba(0,0,0,0.2)', whiteSpace: 'nowrap', maxWidth: 'calc(100% - 48px)', textAlign: 'center' },
 }

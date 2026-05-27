@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { doc, getDoc, collection, query, where, getDocs, addDoc, updateDoc, deleteDoc } from 'firebase/firestore'
 import { db } from '../firebase'
+import MembershipBadge from '../components/membershipBadge'
 
 export default function PublicProfile({ uid, currentUser, onBack }) {
   const [profile, setProfile] = useState(null)
@@ -23,13 +24,11 @@ export default function PublicProfile({ uid, currentUser, onBack }) {
   useEffect(() => {
     if (!currentUser?.uid || !uid) return
     const checkFriendStatus = async () => {
-      // Check if already friends
       const mySnap = await getDoc(doc(db, 'users', currentUser.uid))
       if (mySnap.exists()) {
         const myData = mySnap.data()
         if (myData.friends?.includes(uid)) { setFriendStatus('friends'); return }
       }
-      // Check pending requests
       const q = query(collection(db, 'friendRequests'),
         where('fromUid', '==', currentUser.uid),
         where('toUid', '==', uid),
@@ -125,10 +124,17 @@ export default function PublicProfile({ uid, currentUser, onBack }) {
           ) : (
             <div style={styles.avatar}>{initial}</div>
           )}
-          <h2 style={styles.name}>{profile.name}</h2>
+
+          {/* Name + membership badge */}
+          <div style={styles.nameRow}>
+            <h2 style={styles.name}>{profile.name}</h2>
+            <MembershipBadge userData={profile} size="md" />
+          </div>
+
           {profile.userCode && <p style={styles.userCode}>#{profile.userCode}</p>}
+
           {isHighNoShow && (
-            <div style={styles.noShowBadge}>⚠️ High no-show rate</div>
+            <div style={styles.noShowBadge}>High no-show rate</div>
           )}
 
           {currentUser?.uid !== uid && (
@@ -142,7 +148,7 @@ export default function PublicProfile({ uid, currentUser, onBack }) {
                 </button>
               )}
               {friendStatus === 'friends' && (
-                <div style={styles.friendsLabel}>Friends ✓</div>
+                <div style={styles.friendsLabel}>Friends</div>
               )}
             </div>
           )}
@@ -189,7 +195,8 @@ const styles = {
   profileCard: { background: 'white', borderRadius: '16px', padding: '24px', border: '1px solid #E0DDD5', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' },
   avatar: { width: '80px', height: '80px', borderRadius: '50%', background: '#1D9E75', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', fontWeight: '700', margin: '0 auto 12px' },
   avatarImg: { width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', marginBottom: '12px' },
-  name: { fontSize: '20px', fontWeight: '700', color: '#2C2C2A', margin: '0 0 4px' },
+  nameRow: { display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '4px' },
+  name: { fontSize: '20px', fontWeight: '700', color: '#2C2C2A', margin: 0 },
   userCode: { fontSize: '13px', color: '#7A7A72', margin: '0 0 8px', fontWeight: '500' },
   noShowBadge: { background: '#FCEBEB', color: '#A02020', fontSize: '12px', fontWeight: '600', padding: '4px 12px', borderRadius: '20px', marginTop: '8px' },
   friendBtn: { background: '#1D9E75', color: 'white', border: 'none', borderRadius: '10px', padding: '10px 24px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' },

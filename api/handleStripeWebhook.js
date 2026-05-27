@@ -3,7 +3,6 @@ import admin from 'firebase-admin';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-// Safely initialize Firebase Admin inside Vercel serverless environment contexts
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert({
@@ -14,14 +13,12 @@ if (!admin.apps.length) {
   });
 }
 
-// 1. CRITICAL: Tells Vercel to disable raw body parsers so we can verify the Stripe signature securely
 export const config = {
   api: {
     bodyParser: false,
   },
 };
 
-// Stream decoder helper to parse raw incoming bytes from Stripe servers
 async function getRawBody(readable) {
   const chunks = [];
   for await (const chunk of readable) {
@@ -30,9 +27,6 @@ async function getRawBody(readable) {
   return Buffer.concat(chunks);
 }
 
-/**
- * Vercel Serverless Endpoint entry route replacement for exports.stripeWebhook
- */
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -44,7 +38,6 @@ export default async function handler(req, res) {
 
   try {
     const rawBody = await getRawBody(req);
-    // Secure validation signature check pass logic block
     event = stripe.webhooks.constructEvent(rawBody, sig, endpointSecret);
   } catch (err) {
     console.error('Webhook signature verification failed:', err.message);
@@ -52,8 +45,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Route to appropriate handler based on event type (Preserves your original handler map cleanly)
     switch (event.type) {
+      case 'checkout.session.completed':
+        await handleCheckoutCompleted(event.data.object);
+        break;
+
       case 'customer.subscription.created':
         await handleSubscriptionCreated(event.data.object);
         break;
@@ -66,7 +62,7 @@ export default async function handler(req, res) {
         await handleSubscriptionDeleted(event.data.object);
         break;
 
-      case 'invoice.payment_succeeded':
+      case 'invoice.paid':
         await handlePaymentSucceeded(event.data.object);
         break;
 
@@ -89,9 +85,11 @@ export default async function handler(req, res) {
   }
 }
 
-/**
- * All your original project database handling mechanics remain exactly word-for-word identical here
- */
+async function handleCheckoutCompleted(session) {
+  if (session.mode !== 'subscription') return;
+  console.log(`Checkout completed for customer ${session.customer}, session ${session.id}`);
+}
+
 async function handleSubscriptionCreated(subscription) {
   const customerId = subscription.customer;
   const customer = await stripe.customers.retrieve(customerId);
@@ -113,7 +111,7 @@ async function handleSubscriptionCreated(subscription) {
     'membership.status': 'active',
     'membership.currentPeriodStart': new Date(subscription.current_period_start * 1000),
     'membership.currentPeriodEnd': expiresAt,
-    monthlyPostsUsed: 0, 
+    monthlyPostsUsed: 0,
     lastPostsResetDate: new Date(),
   });
 
@@ -158,8 +156,10 @@ async function handleSubscriptionDeleted(subscription) {
   }
 
   await admin.firestore().collection('users').doc(userId).update({
-    'membership.tier': 'free', 
+    'membership.tier': 'free',
     'membership.status': 'cancelled',
+    'membership.expiresAt': null,
+    'membership.stripeSubscriptionId': null,
     'membership.cancelledAt': new Date(),
     'membership.lastSubscriptionId': subscription.id,
   });
@@ -199,9 +199,12 @@ async function handlePaymentFailed(invoice) {
   }
 
   await admin.firestore().collection('users').doc(userId).update({
+    'membership.status': 'past_due',
     'membership.lastPaymentFailed': new Date(),
     'membership.paymentFailureReason': invoice.last_finalization_error?.message || 'Unknown',
   });
+
+  console.warn(`Payment failed for user ${userId}`);
 }
 
 async function handleTrialEndingWarning(subscription) {
