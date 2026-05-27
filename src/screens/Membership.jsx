@@ -1,105 +1,44 @@
 import { useState, useEffect } from 'react'
-import { doc, updateDoc } from 'firebase/firestore'
 import { db } from '../firebase'
-import { 
-  MEMBERSHIP_TIERS, 
-  getUserTier, 
-  isMembershipActive, 
+import {
+  MEMBERSHIP_TIERS,
+  getUserTier,
+  isMembershipActive,
   getDaysRemaining,
   getMembershipStatusText,
-  canPostGame 
+  canPostGame,
+  getAllTiers
 } from '../membershipUtils'
-import { upgradeMembership, cancelMembership, openBillingPortal } from '../stripeUtils'
+import { startCheckout, openBillingPortal, formatPrice } from '../stripeUtils'
 
-export default function Membership({ onBack, userData, currentUser, onUpdateUser }) {
+export default function Membership({ onBack, userData, currentUser }) {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
-  const [selectedTier, setSelectedTier] = useState(null)
-  const [loading, setLoading] = useState(false)
+  const [selectedPlan, setSelectedPlan] = useState(null)
   const [paymentLoading, setPaymentLoading] = useState(false)
   const [error, setError] = useState('')
-  const [stripeLoaded, setStripeLoaded] = useState(false)
 
   const currentTier = getUserTier(userData)
   const isActive = isMembershipActive(userData)
   const daysRemaining = getDaysRemaining(userData)
   const postStatus = canPostGame(userData)
 
-  // Check if Stripe is loaded
-  useEffect(() => {
-    const checkStripe = async () => {
-      try {
-        const { loadStripe } = await import('@stripe/stripe-js')
-        if (loadStripe && import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY) {
-          setStripeLoaded(true)
-        }
-      } catch (err) {
-        console.warn('Stripe not available:', err)
-      }
-    }
-    checkStripe()
-  }, [])
-
-  const features = [
-    { name: 'Join any game', key: 'joinAnyGame' },
-    { name: 'Posts per month', key: 'postsPerMonth', format: (v) => v === Infinity ? 'Unlimited' : v },
-    { name: 'Basic profile', key: 'basicProfile' },
-    { name: 'Push notifications', key: 'pushNotifications' },
-    { name: 'Priority join queue', key: 'priorityJoinQueue' },
-    { name: 'Reputation badge', key: 'reputationBadge' },
-    { name: 'Unlimited posting', key: 'unlimitedPosting' },
-    { name: 'Recurring games', key: 'recurringGames' },
-    { name: 'Priority listing', key: 'priorityListing' },
-    { name: 'See who joined', key: 'seeJoinedPlayers' },
-    { name: 'No-show protection', key: 'noShowProtection' },
-  ]
-
-  const handleUpgrade = async (tierId) => {
-    if (!stripeLoaded) {
-      setError('Stripe is not available. Please refresh the page.')
-      return
-    }
-    setSelectedTier(tierId)
+  const handleUpgrade = (planId) => {
+    if (planId === 'free') return
+    setSelectedPlan(planId)
     setShowUpgradeModal(true)
     setError('')
   }
 
   const confirmUpgrade = async () => {
-    if (!selectedTier || selectedTier === 'free') return
-    
+    if (!selectedPlan || !currentUser) return
+
     setPaymentLoading(true)
     setError('')
     try {
-      // Direct call to your Vercel serverless function route
-      const response = await fetch('/api/createCheckoutSession', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tierId: selectedTier,
-          userId: currentUser.uid,
-          userEmail: currentUser.email // Provides parameters securely to Stripe.js
-        })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Failed to start payment processing initialization session.');
-      }
-
-      // If a valid session is created, redirect your browser window to Stripe's secure checkout page
-      if (data.sessionId) {
-        // Loads Stripe dynamically using your installed @stripe/stripe-js library parameters
-        const { loadStripe } = await import('@stripe/stripe-js');
-        const stripe = await loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
-        
-        await stripe.redirectToCheckout({ sessionId: data.sessionId });
-      } else {
-        throw new Error('No valid checkout transaction session instance token returned.');
-      }
-
+      await startCheckout(currentUser.uid, selectedPlan, currentUser.email)
     } catch (err) {
       console.error('Upgrade error:', err)
-      setError(err.message || 'Failed to start payment. Please try again.')
+      setError(err.message || 'Failed to start checkout')
       setPaymentLoading(false)
     }
   }
@@ -109,7 +48,7 @@ export default function Membership({ onBack, userData, currentUser, onUpdateUser
       await openBillingPortal(currentUser.uid)
     } catch (err) {
       console.error('Billing portal error:', err)
-      setError('Billing portal is temporarily unavailable. Please contact support.')
+      setError('Billing portal unavailable')
     }
   }
 
@@ -118,6 +57,15 @@ export default function Membership({ onBack, userData, currentUser, onUpdateUser
       <path d="M20 6L9 17l-5-5" />
     </svg>
   )
+
+  const features = [
+    { name: 'Posts per month', key: 'postsPerMonth', format: (v) => v === Infinity ? 'Unlimited' : v },
+    { name: 'Priority join queue', key: 'priorityJoinQueue' },
+    { name: 'Reputation badge', key: 'reputationBadge' },
+    { name: 'Recurring games', key: 'recurringGames' },
+    { name: 'Priority listing', key: 'priorityListing' },
+    { name: 'No-show protection', key: 'noShowProtection' },
+  ]
 
   return (
     <div style={styles.screen}>
@@ -179,17 +127,16 @@ export default function Membership({ onBack, userData, currentUser, onUpdateUser
 
         {/* Pricing Tiers */}
         <div style={styles.tiersSection}>
-          <p style={styles.sectionLabel} style={{ marginBottom: '16px' }}>Plans & pricing</p>
+          <p style={styles.sectionLabel}>Plans</p>
           <div style={styles.tiersContainer}>
-            {Object.values(MEMBERSHIP_TIERS).map((tier) => {
+            {getAllTiers().map((tier) => {
               const isCurrent = tier.id === currentTier.id
               return (
-                <div 
+                <div
                   key={tier.id}
                   style={{
                     ...styles.tierCard,
                     ...(isCurrent ? styles.tierCardCurrent : {}),
-                    ...(!isCurrent && tier.id !== 'free' ? { border: '2px solid #1D9E75', borderBottomWidth: '4px' } : {})
                   }}
                 >
                   <div style={styles.tierHeader}>
@@ -198,7 +145,7 @@ export default function Membership({ onBack, userData, currentUser, onUpdateUser
                   </div>
 
                   <p style={styles.tierPrice}>
-                    {tier.price === 0 ? 'Free' : `$${tier.monthlyPrice}/month`}
+                    {formatPrice(tier.price)}{tier.price > 0 && '/month'}
                   </p>
 
                   <div style={styles.tierFeatures}>
@@ -206,7 +153,7 @@ export default function Membership({ onBack, userData, currentUser, onUpdateUser
                       const hasFeature = tier.features[feature.key]
                       const value = tier.features[feature.key]
                       const displayValue = feature.format ? feature.format(value) : (hasFeature ? 'Yes' : 'No')
-                      
+
                       return (
                         <div key={feature.key} style={styles.featureRow}>
                           <span style={styles.featureName}>{feature.name}</span>
@@ -220,17 +167,12 @@ export default function Membership({ onBack, userData, currentUser, onUpdateUser
                     })}
                   </div>
 
-                  {/* Action Button */}
                   {isCurrent ? (
                     <button style={styles.buttonDisabled} disabled>
                       Your current plan
                     </button>
-                  ) : tier.id === 'free' ? (
-                    <button style={styles.buttonSecondary} onClick={() => handleCancel()}>
-                      Downgrade to free
-                    </button>
                   ) : (
-                    <button 
+                    <button
                       style={styles.buttonPrimary}
                       onClick={() => handleUpgrade(tier.id)}
                       disabled={paymentLoading}
@@ -246,65 +188,36 @@ export default function Membership({ onBack, userData, currentUser, onUpdateUser
 
         {/* Info Section */}
         <div style={styles.infoSection}>
-          <h3 style={styles.infoTitle}>What you get</h3>
-          
           <div style={styles.infoCard}>
-            <p style={styles.infoCardTitle}>🎮 Free Tier</p>
+            <p style={styles.infoCardTitle}>Free</p>
             <ul style={styles.infoList}>
-              <li>Join any game happening near you</li>
+              <li>Join any game</li>
               <li>Post up to 5 games per month</li>
               <li>Basic profile with stats</li>
-              <li>Receive push notifications</li>
-              <li>Free forever, no credit card needed</li>
             </ul>
           </div>
 
           <div style={styles.infoCard}>
-            <p style={styles.infoCardTitle}>⭐ Priority Member</p>
+            <p style={styles.infoCardTitle}>Regular - $9.99/month</p>
             <ul style={styles.infoList}>
-              <li>Everything in Free</li>
-              <li>Priority join queue when games fill fast</li>
-              <li>Reputation badge to show reliability</li>
-              <li>Only $3.99/month</li>
-            </ul>
-          </div>
-
-          <div style={styles.infoCard}>
-            <p style={styles.infoCardTitle}>👑 Regular Member</p>
-            <ul style={styles.infoList}>
-              <li>Everything in Priority</li>
               <li>Unlimited game posting</li>
-              <li>Schedule recurring games</li>
-              <li>Premium listing on map</li>
-              <li>See who joined before confirming</li>
-              <li>No-show protection features</li>
-              <li>Only $9.99/month</li>
+              <li>Priority join queue</li>
+              <li>Recurring games</li>
+              <li>No-show protection</li>
+            </ul>
+          </div>
+
+          <div style={styles.infoCard}>
+            <p style={styles.infoCardTitle}>Pro - $19.99/month</p>
+            <ul style={styles.infoList}>
+              <li>Everything in Regular</li>
+              <li>Advanced analytics</li>
+              <li>Custom branding</li>
+              <li>Team management</li>
             </ul>
           </div>
         </div>
 
-        {/* Current Member Options */}
-        {currentTier.id !== 'free' && (
-          <div style={styles.infoCard} style={{ marginTop: '16px', background: '#FCEBEB', borderColor: '#E0A0A0' }}>
-            <p style={styles.infoCardTitle} style={{ color: '#A02020' }}>Want to cancel?</p>
-            <p style={{ fontSize: '13px', color: '#555550', margin: '8px 0 12px 0', lineHeight: '1.5' }}>
-              You'll lose access to premium features at the end of your billing period. You can always upgrade again later.
-            </p>
-            <button 
-              style={{
-                ...styles.buttonSecondary,
-                borderColor: '#E0A0A0',
-                color: '#A02020'
-              }}
-              onClick={handleCancel}
-              disabled={loading}
-            >
-              {loading ? 'Processing...' : 'Cancel membership'}
-            </button>
-          </div>
-        )}
-
-        {/* Error Message */}
         {error && <p style={styles.error}>{error}</p>}
       </div>
 
@@ -313,57 +226,48 @@ export default function Membership({ onBack, userData, currentUser, onUpdateUser
         <div style={styles.overlay}>
           <div style={styles.modal}>
             <h3 style={styles.modalTitle}>
-              Upgrade to {selectedTier === 'priority' ? 'Priority' : 'Regular'} Member
+              Upgrade to {selectedPlan === 'regular' ? 'Regular' : 'Pro'}
             </h3>
-            
-            {selectedTier === 'priority' && (
-              <>
-                <p style={styles.modalText}>
-                  Get priority join queue and reputation badge for <strong>$3.99/month</strong>
-                </p>
-                <ul style={styles.modalList}>
-                  <li>✓ Priority join queue</li>
-                  <li>✓ Reputation badge</li>
-                  <li>✓ All Free tier features</li>
-                </ul>
-              </>
-            )}
 
-            {selectedTier === 'regular' && (
-              <>
-                <p style={styles.modalText}>
-                  Unlimited posting and premium features for <strong>$9.99/month</strong>
-                </p>
-                <ul style={styles.modalList}>
-                  <li>✓ Unlimited game posting</li>
-                  <li>✓ Recurring games</li>
-                  <li>✓ Premium map listing</li>
-                  <li>✓ No-show protection</li>
-                  <li>✓ All Priority features</li>
-                </ul>
-              </>
-            )}
-
-            <p style={styles.modalSmallText}>
-              Your subscription will auto-renew each month. You can cancel anytime from your profile.
+            <p style={styles.modalText}>
+              {formatPrice(MEMBERSHIP_TIERS[selectedPlan]?.price || 0)}/month
             </p>
+
+            <ul style={styles.modalList}>
+              {selectedPlan === 'regular' && (
+                <>
+                  <li>Unlimited game posting</li>
+                  <li>Priority join queue</li>
+                  <li>Recurring games</li>
+                  <li>No-show protection</li>
+                </>
+              )}
+              {selectedPlan === 'pro' && (
+                <>
+                  <li>Everything in Regular</li>
+                  <li>Advanced analytics</li>
+                  <li>Custom branding</li>
+                  <li>Team management</li>
+                </>
+              )}
+            </ul>
 
             {error && <p style={styles.modalError}>{error}</p>}
 
             <div style={styles.modalButtons}>
-              <button 
-                style={styles.modalCancel} 
+              <button
+                style={styles.modalCancel}
                 onClick={() => setShowUpgradeModal(false)}
                 disabled={paymentLoading}
               >
                 Cancel
               </button>
-              <button 
-                style={styles.modalConfirm} 
+              <button
+                style={styles.modalConfirm}
                 onClick={confirmUpgrade}
                 disabled={paymentLoading}
               >
-                {paymentLoading ? 'Processing...' : 'Continue to payment'}
+                {paymentLoading ? 'Processing...' : 'Continue'}
               </button>
             </div>
           </div>

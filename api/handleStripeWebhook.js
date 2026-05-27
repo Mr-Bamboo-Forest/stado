@@ -3,7 +3,6 @@ import admin from 'firebase-admin';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-// Safely initialize Firebase Admin inside Vercel serverless environment contexts
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert({
@@ -14,14 +13,12 @@ if (!admin.apps.length) {
   });
 }
 
-// 1. CRITICAL: Tells Vercel to disable raw body parsers so we can verify the Stripe signature securely
 export const config = {
   api: {
     bodyParser: false,
   },
 };
 
-// Stream decoder helper to parse raw incoming bytes from Stripe servers
 async function getRawBody(readable) {
   const chunks = [];
   for await (const chunk of readable) {
@@ -30,9 +27,6 @@ async function getRawBody(readable) {
   return Buffer.concat(chunks);
 }
 
-/**
- * Vercel Serverless Endpoint entry route replacement for exports.stripeWebhook
- */
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -44,7 +38,6 @@ export default async function handler(req, res) {
 
   try {
     const rawBody = await getRawBody(req);
-    // Secure validation signature check pass logic block
     event = stripe.webhooks.constructEvent(rawBody, sig, endpointSecret);
   } catch (err) {
     console.error('Webhook signature verification failed:', err.message);
@@ -52,34 +45,24 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Route to appropriate handler based on event type (Preserves your original handler map cleanly)
     switch (event.type) {
-      case 'customer.subscription.created':
-        await handleSubscriptionCreated(event.data.object);
+      case 'checkout.session.completed':
+        await handleCheckoutComplete(event.data.object);
         break;
-
       case 'customer.subscription.updated':
         await handleSubscriptionUpdated(event.data.object);
         break;
-
       case 'customer.subscription.deleted':
         await handleSubscriptionDeleted(event.data.object);
         break;
-
-      case 'invoice.payment_succeeded':
-        await handlePaymentSucceeded(event.data.object);
+      case 'invoice.paid':
+        await handleInvoicePaid(event.data.object);
         break;
-
       case 'invoice.payment_failed':
-        await handlePaymentFailed(event.data.object);
+        await handleInvoiceFailed(event.data.object);
         break;
-
-      case 'customer.subscription.trial_will_end':
-        await handleTrialEndingWarning(event.data.object);
-        break;
-
       default:
-        console.log(`Unhandled event type ${event.type}`);
+        console.log(`Unhandled event: ${event.type}`);
     }
 
     return res.status(200).json({ received: true });
@@ -89,134 +72,116 @@ export default async function handler(req, res) {
   }
 }
 
-/**
- * All your original project database handling mechanics remain exactly word-for-word identical here
- */
-async function handleSubscriptionCreated(subscription) {
-  const customerId = subscription.customer;
-  const customer = await stripe.customers.retrieve(customerId);
-  const userId = customer.metadata?.firebaseUid;
+async function handleCheckoutComplete(session) {
+  const userId = session.metadata?.firebaseUid;
+  const planId = session.metadata?.planId;
 
-  if (!userId) {
-    console.error('No Firebase UID found for customer:', customerId);
-    return;
-  }
+  if (!userId) return;
 
-  const tier = getPriceToTier(subscription.items.data[0].price.id);
-  const expiresAt = new Date(subscription.current_period_end * 1000);
+  const subscription = await stripe.subscriptions.retrieve(session.subscription);
+  const periodEnd = new Date(subscription.current_period_end * 1000);
 
   await admin.firestore().collection('users').doc(userId).update({
-    'membership.tier': tier,
-    'membership.stripeSubscriptionId': subscription.id,
-    'membership.stripeCustomerId': customerId,
-    'membership.expiresAt': expiresAt,
-    'membership.status': 'active',
-    'membership.currentPeriodStart': new Date(subscription.current_period_start * 1000),
-    'membership.currentPeriodEnd': expiresAt,
-    monthlyPostsUsed: 0, 
-    lastPostsResetDate: new Date(),
+    subscriptionPlan: planId,
+    subscriptionStatus: 'active',
+    stripeSubscriptionId: session.subscription,
+    stripeCustomerId: session.customer,
+    currentPeriodEnd: admin.firestore.Timestamp.fromDate(periodEnd),
+    monthlyPostsUsed: 0,
   });
 
-  console.log(`Subscription created for user ${userId}, tier: ${tier}`);
+  console.log(`Checkout complete: ${userId} -> ${planId}`);
 }
 
 async function handleSubscriptionUpdated(subscription) {
   const customerId = subscription.customer;
-  const customer = await stripe.customers.retrieve(customerId);
-  const userId = customer.metadata?.firebaseUid;
+  const userQuery = await admin.firestore()
+    .collection('users')
+    .where('stripeCustomerId', '==', customerId)
+    .limit(1)
+    .get();
 
-  if (!userId) {
-    console.error('No Firebase UID found for customer:', customerId);
-    return;
-  }
+  if (userQuery.empty) return;
 
-  const tier = getPriceToTier(subscription.items.data[0].price.id);
-  const expiresAt = new Date(subscription.current_period_end * 1000);
-  const appStatus = subscription.status === 'active' ? 'active' : 'inactive';
+  const userId = userQuery.docs[0].id;
+  const planId = getPriceToPlan(subscription.items.data[0].price.id);
+  const periodEnd = new Date(subscription.current_period_end * 1000);
+  const status = subscription.status === 'active' ? 'active' : subscription.status;
 
   await admin.firestore().collection('users').doc(userId).update({
-    'membership.tier': tier,
-    'membership.stripeSubscriptionId': subscription.id,
-    'membership.expiresAt': expiresAt,
-    'membership.status': appStatus,
-    'membership.currentPeriodStart': new Date(subscription.current_period_start * 1000),
-    'membership.currentPeriodEnd': expiresAt,
-    'membership.updated': new Date(),
+    subscriptionPlan: planId,
+    subscriptionStatus: status,
+    currentPeriodEnd: admin.firestore.Timestamp.fromDate(periodEnd),
   });
 
-  console.log(`Subscription updated for user ${userId}, new status: ${appStatus}`);
+  console.log(`Subscription updated: ${userId} -> ${planId} (${status})`);
 }
 
 async function handleSubscriptionDeleted(subscription) {
   const customerId = subscription.customer;
-  const customer = await stripe.customers.retrieve(customerId);
-  const userId = customer.metadata?.firebaseUid;
+  const userQuery = await admin.firestore()
+    .collection('users')
+    .where('stripeCustomerId', '==', customerId)
+    .limit(1)
+    .get();
 
-  if (!userId) {
-    console.error('No Firebase UID found for customer:', customerId);
-    return;
-  }
+  if (userQuery.empty) return;
+
+  const userId = userQuery.docs[0].id;
 
   await admin.firestore().collection('users').doc(userId).update({
-    'membership.tier': 'free', 
-    'membership.status': 'cancelled',
-    'membership.cancelledAt': new Date(),
-    'membership.lastSubscriptionId': subscription.id,
+    subscriptionPlan: 'free',
+    subscriptionStatus: 'cancelled',
   });
 
-  console.log(`Subscription cancelled for user ${userId}`);
+  console.log(`Subscription cancelled: ${userId}`);
 }
 
-async function handlePaymentSucceeded(invoice) {
+async function handleInvoicePaid(invoice) {
   if (!invoice.subscription) return;
 
   const customerId = invoice.customer;
-  const customer = await stripe.customers.retrieve(customerId);
-  const userId = customer.metadata?.firebaseUid;
+  const userQuery = await admin.firestore()
+    .collection('users')
+    .where('stripeCustomerId', '==', customerId)
+    .limit(1)
+    .get();
 
-  if (!userId) {
-    console.error('No Firebase UID found for customer:', customerId);
-    return;
-  }
+  if (userQuery.empty) return;
 
+  const userId = userQuery.docs[0].id;
+
+  // Reset monthly posts on successful payment
   await admin.firestore().collection('users').doc(userId).update({
     monthlyPostsUsed: 0,
-    lastPostsResetDate: new Date(),
-    'membership.lastPaymentDate': new Date(),
   });
 
-  console.log(`Payment succeeded for user ${userId}, monthly posts reset`);
+  console.log(`Invoice paid, posts reset: ${userId}`);
 }
 
-async function handlePaymentFailed(invoice) {
+async function handleInvoiceFailed(invoice) {
   const customerId = invoice.customer;
-  const customer = await stripe.customers.retrieve(customerId);
-  const userId = customer.metadata?.firebaseUid;
+  const userQuery = await admin.firestore()
+    .collection('users')
+    .where('stripeCustomerId', '==', customerId)
+    .limit(1)
+    .get();
 
-  if (!userId) {
-    console.error('No Firebase UID found for customer:', customerId);
-    return;
-  }
+  if (userQuery.empty) return;
+
+  const userId = userQuery.docs[0].id;
 
   await admin.firestore().collection('users').doc(userId).update({
-    'membership.lastPaymentFailed': new Date(),
-    'membership.paymentFailureReason': invoice.last_finalization_error?.message || 'Unknown',
+    subscriptionStatus: 'past_due',
   });
+
+  console.log(`Payment failed: ${userId}`);
 }
 
-async function handleTrialEndingWarning(subscription) {
-  const customerId = subscription.customer;
-  const customer = await stripe.customers.retrieve(customerId);
-  const userId = customer.metadata?.firebaseUid;
-
-  if (!userId) return;
-  console.log(`Trial ending soon for user ${userId}`);
-}
-
-function getPriceToTier(priceId) {
+function getPriceToPlan(priceId) {
   const priceMap = {
-    [process.env.STRIPE_PRICE_PRIORITY]: 'priority',
     [process.env.STRIPE_PRICE_REGULAR]: 'regular',
+    [process.env.STRIPE_PRICE_PRO]: 'pro',
   };
   return priceMap[priceId] || 'free';
 }

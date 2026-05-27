@@ -47,8 +47,12 @@ export default function Onboarding({ onComplete, user }) {
         gamesHosted: 0,
         noShowCount: 0,
         noShowRate: 0,
+        noShowGames: [],
         friends: [],
         userCode,
+        subscriptionPlan: 'free',
+        subscriptionStatus: 'active',
+        monthlyPostsUsed: 0,
         createdAt: new Date(),
       })
       onComplete()
