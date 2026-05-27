@@ -6,9 +6,9 @@ import { db } from '../firebase'
 // Place your football photo files in: src/assets/onboarding/
 // Name them: slide1.png, slide2.png, slide3.png
 // Then update the imports below:
-import slide1 from '../assets/onboarding/slide1.png'
-import slide2 from '../assets/onboarding/slide2.png'
-import slide3 from '../assets/onboarding/slide3.png'
+import slide1 from '../../public/slide1.png'
+import slide2 from '../../public/slide2.png'
+import slide3 from '../../public/slide3.png'
 // ─────────────────────────────────────────────────────────────────────────────
 
 const SLIDES = [
