@@ -17,11 +17,27 @@ export default function Membership({ onBack, userData, currentUser, onUpdateUser
   const [loading, setLoading] = useState(false)
   const [paymentLoading, setPaymentLoading] = useState(false)
   const [error, setError] = useState('')
+  const [stripeLoaded, setStripeLoaded] = useState(false)
 
   const currentTier = getUserTier(userData)
   const isActive = isMembershipActive(userData)
   const daysRemaining = getDaysRemaining(userData)
   const postStatus = canPostGame(userData)
+
+  // Check if Stripe is loaded
+  useEffect(() => {
+    const checkStripe = async () => {
+      try {
+        const { loadStripe } = await import('@stripe/js')
+        if (loadStripe && import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY) {
+          setStripeLoaded(true)
+        }
+      } catch (err) {
+        console.warn('Stripe not available:', err)
+      }
+    }
+    checkStripe()
+  }, [])
 
   const features = [
     { name: 'Join any game', key: 'joinAnyGame' },
@@ -38,8 +54,13 @@ export default function Membership({ onBack, userData, currentUser, onUpdateUser
   ]
 
   const handleUpgrade = async (tierId) => {
+    if (!stripeLoaded) {
+      setError('Stripe is not available. Please refresh the page.')
+      return
+    }
     setSelectedTier(tierId)
     setShowUpgradeModal(true)
+    setError('')
   }
 
   const confirmUpgrade = async () => {
@@ -48,29 +69,38 @@ export default function Membership({ onBack, userData, currentUser, onUpdateUser
     setPaymentLoading(true)
     setError('')
     try {
-      await upgradeMembership(currentUser.uid, selectedTier)
-      // In a real implementation, this would redirect to Stripe
-      // For now, we'll just show the modal closed
-      setShowUpgradeModal(false)
+      // Direct call to your Vercel serverless function route
+      const response = await fetch('/api/createCheckoutSession', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tierId: selectedTier,
+          userId: currentUser.uid,
+          userEmail: currentUser.email // Provides parameters securely to Stripe.js
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to start payment processing initialization session.');
+      }
+
+      // If a valid session is created, redirect your browser window to Stripe's secure checkout page
+      if (data.sessionId) {
+        // Loads Stripe dynamically using your installed @stripe/js library parameters
+        const { loadStripe } = await import('@stripe/js');
+        const stripe = await loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
+        
+        await stripe.redirectToCheckout({ sessionId: data.sessionId });
+      } else {
+        throw new Error('No valid checkout transaction session instance token returned.');
+      }
+
     } catch (err) {
       console.error('Upgrade error:', err)
-      setError('Failed to start payment. Please try again.')
-    } finally {
+      setError(err.message || 'Failed to start payment. Please try again.')
       setPaymentLoading(false)
-    }
-  }
-
-  const handleCancel = async () => {
-    try {
-      setLoading(true)
-      await cancelMembership(currentUser.uid)
-      alert('Membership cancelled. You\'ll have access until the end of your billing period.')
-      onBack()
-    } catch (err) {
-      console.error('Cancel error:', err)
-      setError('Failed to cancel membership.')
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -79,7 +109,7 @@ export default function Membership({ onBack, userData, currentUser, onUpdateUser
       await openBillingPortal(currentUser.uid)
     } catch (err) {
       console.error('Billing portal error:', err)
-      setError('Failed to open billing portal.')
+      setError('Billing portal is temporarily unavailable. Please contact support.')
     }
   }
 
@@ -164,48 +194,48 @@ export default function Membership({ onBack, userData, currentUser, onUpdateUser
                 >
                   <div style={styles.tierHeader}>
                     <h3 style={styles.tierName}>{tier.name}</h3>
-                    {isCurrent && <span style={styles.currentBadge}>Current</span>}
+                    {isCurrent && <span style={styles.currentBadge}>CURRENT</span>}
                   </div>
-                  
+
                   <p style={styles.tierPrice}>
-                    {tier.price === 0 ? 'Free forever' : `$${tier.price.toFixed(2)}/month`}
+                    {tier.price === 0 ? 'Free' : `$${tier.monthlyPrice}/month`}
                   </p>
 
                   <div style={styles.tierFeatures}>
                     {features.map((feature) => {
                       const hasFeature = tier.features[feature.key]
                       const value = tier.features[feature.key]
-                      const displayValue = feature.format ? feature.format(value) : (hasFeature ? '✓' : '✗')
+                      const displayValue = feature.format ? feature.format(value) : (hasFeature ? 'Yes' : 'No')
                       
                       return (
                         <div key={feature.key} style={styles.featureRow}>
-                          {renderCheckmark(hasFeature)}
-                          <span style={{ ...styles.featureName, color: hasFeature ? '#2C2C2A' : '#C9C6BC' }}>
-                            {feature.name}
-                          </span>
-                          {feature.format && (
+                          <span style={styles.featureName}>{feature.name}</span>
+                          {feature.key === 'postsPerMonth' ? (
                             <span style={styles.featureValue}>{displayValue}</span>
+                          ) : (
+                            renderCheckmark(hasFeature)
                           )}
                         </div>
                       )
                     })}
                   </div>
 
+                  {/* Action Button */}
                   {isCurrent ? (
                     <button style={styles.buttonDisabled} disabled>
-                      Current plan
+                      Your current plan
                     </button>
                   ) : tier.id === 'free' ? (
                     <button style={styles.buttonSecondary} onClick={() => handleCancel()}>
-                      Downgrade
+                      Downgrade to free
                     </button>
                   ) : (
                     <button 
-                      style={styles.buttonPrimary} 
+                      style={styles.buttonPrimary}
                       onClick={() => handleUpgrade(tier.id)}
-                      disabled={loading}
+                      disabled={paymentLoading}
                     >
-                      Upgrade now
+                      {paymentLoading ? 'Processing...' : 'Upgrade'}
                     </button>
                   )}
                 </div>
@@ -216,7 +246,7 @@ export default function Membership({ onBack, userData, currentUser, onUpdateUser
 
         {/* Info Section */}
         <div style={styles.infoSection}>
-          <h4 style={styles.infoTitle}>What's included</h4>
+          <h3 style={styles.infoTitle}>What you get</h3>
           
           <div style={styles.infoCard}>
             <p style={styles.infoCardTitle}>🎮 Free Tier</p>
@@ -252,6 +282,27 @@ export default function Membership({ onBack, userData, currentUser, onUpdateUser
             </ul>
           </div>
         </div>
+
+        {/* Current Member Options */}
+        {currentTier.id !== 'free' && (
+          <div style={styles.infoCard} style={{ marginTop: '16px', background: '#FCEBEB', borderColor: '#E0A0A0' }}>
+            <p style={styles.infoCardTitle} style={{ color: '#A02020' }}>Want to cancel?</p>
+            <p style={{ fontSize: '13px', color: '#555550', margin: '8px 0 12px 0', lineHeight: '1.5' }}>
+              You'll lose access to premium features at the end of your billing period. You can always upgrade again later.
+            </p>
+            <button 
+              style={{
+                ...styles.buttonSecondary,
+                borderColor: '#E0A0A0',
+                color: '#A02020'
+              }}
+              onClick={handleCancel}
+              disabled={loading}
+            >
+              {loading ? 'Processing...' : 'Cancel membership'}
+            </button>
+          </div>
+        )}
 
         {/* Error Message */}
         {error && <p style={styles.error}>{error}</p>}
@@ -294,7 +345,7 @@ export default function Membership({ onBack, userData, currentUser, onUpdateUser
             )}
 
             <p style={styles.modalSmallText}>
-              Your subscription will auto-renew each month. You can cancel anytime.
+              Your subscription will auto-renew each month. You can cancel anytime from your profile.
             </p>
 
             {error && <p style={styles.modalError}>{error}</p>}

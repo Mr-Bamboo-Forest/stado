@@ -1,98 +1,103 @@
-/**
- * Stripe Payment Integration Module
- * This module handles all payment-related operations with Stripe
- * 
- * TODO: Replace placeholder functions with actual Stripe implementation
- * - Initialize Stripe instance with your publishable key
- * - Set up Cloud Functions for server-side payment processing
- * - Handle webhook events from Stripe (subscription updates, renewals, cancellations)
- */
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { initializeApp } from 'firebase/app';
 
-// Placeholder - will be replaced with actual Stripe instance
-const STRIPE_PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_test_placeholder'
+const STRIPE_PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+const functions = getFunctions();
+
+// Dynamically load Stripe
+let stripePromise = null;
+
+const getStripe = async () => {
+  if (!stripePromise) {
+    const { loadStripe } = await import('@stripe/js');
+    stripePromise = loadStripe(STRIPE_PUBLISHABLE_KEY);
+  }
+  return stripePromise;
+};
 
 /**
  * Initialize Stripe payment session
+ * Calls Cloud Function to create checkout session
  * @param {string} userId - User ID
  * @param {string} tierId - 'priority' or 'regular'
- * @returns {Promise<{sessionId: string, clientSecret: string}>}
+ * @returns {Promise<{sessionId: string}>}
  */
 export const initializePaymentSession = async (userId, tierId) => {
   try {
-    // TODO: Call Cloud Function to create Stripe Checkout session
-    // const response = await fetch('/api/create-checkout-session', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({ userId, tierId })
-    // })
-    // const data = await response.json()
-    // return data.sessionId
+    const createCheckoutSession = httpsCallable(functions, 'createCheckoutSession');
+    const response = await createCheckoutSession({ tierId });
     
-    console.log('🔄 Payment session initialized for:', userId, tierId)
-    return {
-      sessionId: 'cs_test_placeholder_' + Date.now(),
-      clientSecret: 'pi_test_placeholder_' + Date.now(),
+    if (response.data.success) {
+      return {
+        sessionId: response.data.sessionId,
+        success: true,
+      };
+    } else {
+      throw new Error('Failed to create checkout session');
     }
   } catch (error) {
-    console.error('Payment session error:', error)
-    throw error
+    console.error('Payment session error:', error);
+    throw error;
   }
-}
+};
 
 /**
  * Start Stripe checkout for a subscription
+ * Redirects user to Stripe Checkout
  * @param {string} userId - User ID
  * @param {string} tierId - 'priority' or 'regular'
  * @returns {Promise<void>}
  */
 export const startCheckout = async (userId, tierId) => {
   try {
-    const session = await initializePaymentSession(userId, tierId)
+    // Get checkout session
+    const { sessionId } = await initializePaymentSession(userId, tierId);
     
-    // TODO: Implement actual Stripe checkout redirect
-    // const stripe = await loadStripe(STRIPE_PUBLISHABLE_KEY)
-    // await stripe.redirectToCheckout({ sessionId: session.sessionId })
+    // Get Stripe instance
+    const stripe = await getStripe();
     
-    console.log('✅ Checkout would redirect with session:', session.sessionId)
-    // For now, show a success message
-    alert(`Redirecting to Stripe checkout for ${tierId} membership...`)
-  } catch (error) {
-    console.error('Checkout error:', error)
-    throw error
-  }
-}
-
-/**
- * Manage subscription (update, cancel, view portal)
- * @param {string} userId - User ID
- * @param {string} action - 'update', 'cancel', 'portal'
- * @param {string} tierId - (optional) New tier for 'update' action
- * @returns {Promise<Object>}
- */
-export const manageSubscription = async (userId, action, tierId = null) => {
-  try {
-    // TODO: Call Cloud Function for subscription management
-    // const response = await fetch('/api/manage-subscription', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({ userId, action, tierId })
-    // })
-    // return await response.json()
-    
-    console.log('🔄 Managing subscription:', { userId, action, tierId })
-    
-    const responses = {
-      update: { success: true, message: 'Subscription updated (placeholder)' },
-      cancel: { success: true, message: 'Subscription cancelled (placeholder)' },
-      portal: { success: true, url: 'https://billing.stripe.com/placeholder' },
+    if (!stripe) {
+      throw new Error('Failed to load Stripe');
     }
     
-    return responses[action] || { success: false, message: 'Unknown action' }
+    // Redirect to Stripe Checkout
+    const { error } = await stripe.redirectToCheckout({ sessionId });
+    
+    if (error) {
+      console.error('Stripe redirect error:', error);
+      throw error;
+    }
   } catch (error) {
-    console.error('Subscription management error:', error)
-    throw error
+    console.error('Checkout error:', error);
+    throw error;
   }
-}
+};
+
+/**
+ * Manage subscription (cancel, portal, etc)
+ * For actual implementation, you'd need additional Cloud Functions
+ * @param {string} userId - User ID
+ * @param {string} action - 'cancel', 'portal', etc
+ * @returns {Promise<Object>}
+ */
+export const manageSubscription = async (userId, action) => {
+  try {
+    // TODO: Create Cloud Function for subscription management
+    // For now, this is a placeholder for future implementation
+    
+    switch (action) {
+      case 'portal':
+        return await openBillingPortal(userId);
+      case 'cancel':
+        return await cancelSubscriptionRequest(userId);
+      default:
+        throw new Error('Unknown action');
+    }
+  } catch (error) {
+    console.error('Subscription management error:', error);
+    throw error;
+  }
+};
 
 /**
  * Upgrade membership
@@ -101,75 +106,116 @@ export const manageSubscription = async (userId, action, tierId = null) => {
  * @returns {Promise<void>}
  */
 export const upgradeMembership = async (userId, targetTier) => {
-  return startCheckout(userId, targetTier)
-}
+  return startCheckout(userId, targetTier);
+};
 
 /**
- * Cancel membership
+ * Cancel membership with confirmation
  * @param {string} userId - User ID
  * @returns {Promise<Object>}
  */
 export const cancelMembership = async (userId) => {
-  if (!window.confirm('Are you sure you want to cancel your membership? You\'ll lose access to premium features at the end of your billing period.')) {
-    return
+  const confirmed = window.confirm(
+    'Are you sure you want to cancel your membership? You\'ll lose access to premium features at the end of your billing period.'
+  );
+  
+  if (!confirmed) {
+    return { success: false, cancelled: false };
   }
-  return manageSubscription(userId, 'cancel')
+  
+  return cancelSubscriptionRequest(userId);
+};
+
+/**
+ * Request to cancel subscription
+ * This would call a Cloud Function in production
+ * @param {string} userId - User ID
+ * @returns {Promise<Object>}
+ */
+async function cancelSubscriptionRequest(userId) {
+  try {
+    // TODO: Implement Cloud Function for cancellation
+    // const cancelSubscription = httpsCallable(functions, 'cancelSubscription');
+    // const response = await cancelSubscription({ userId });
+    // return response.data;
+    
+    console.log('Subscription cancellation would be processed for:', userId);
+    return {
+      success: true,
+      message: 'Cancellation request sent. You will lose access at the end of your billing period.',
+    };
+  } catch (error) {
+    console.error('Cancellation error:', error);
+    throw error;
+  }
 }
 
 /**
- * Open customer portal to manage billing
+ * Open Stripe Customer Portal
+ * Allows user to manage billing, payment methods, invoices, etc.
  * @param {string} userId - User ID
  * @returns {Promise<void>}
  */
 export const openBillingPortal = async (userId) => {
   try {
-    const result = await manageSubscription(userId, 'portal')
-    if (result.success && result.url) {
-      window.open(result.url, '_blank')
-    }
+    // TODO: Implement Cloud Function to create portal session
+    // const createPortalSession = httpsCallable(functions, 'createBillingPortal');
+    // const response = await createPortalSession({ userId });
+    // window.location.href = response.data.url;
+    
+    // For now, direct link (you'll want to implement the Cloud Function)
+    alert('Billing portal feature coming soon. Please contact support for billing changes.');
   } catch (error) {
-    console.error('Error opening billing portal:', error)
+    console.error('Error opening billing portal:', error);
+    throw error;
   }
-}
+};
 
 /**
- * Check payment status from Firebase
+ * Check payment status from Firebase data
  * @param {Object} userData - User document
- * @returns {Object} { isPaid: boolean, status: string, expiresAt: Date }
+ * @returns {Object} { isPaid, status, expiresAt }
  */
 export const getPaymentStatus = (userData) => {
   if (!userData?.membership) {
-    return { isPaid: false, status: 'free', expiresAt: null }
+    return {
+      isPaid: false,
+      status: 'free',
+      expiresAt: null,
+      tier: 'free',
+    };
   }
-  
-  const { tier, expiresAt, stripeCustomerId, status } = userData.membership
-  const today = new Date()
-  const isExpired = expiresAt && new Date(expiresAt) < today
-  
+
+  const { tier, expiresAt, stripeCustomerId, status } = userData.membership;
+  const today = new Date();
+  const isExpired = expiresAt && new Date(expiresAt) < today;
+
   return {
     isPaid: tier !== 'free' && !isExpired,
     status: isExpired ? 'expired' : status || 'active',
-    tier,
+    tier: tier || 'free',
     expiresAt: expiresAt ? new Date(expiresAt) : null,
     stripeCustomerId,
-  }
-}
+    isExpired,
+  };
+};
 
 /**
- * Validate license/subscription (helper for offline validation)
+ * Validate license (check if subscription is still valid)
  * @param {Object} userData - User document
  * @returns {boolean}
  */
 export const isValidLicense = (userData) => {
-  if (!userData?.membership) return true // Free tier is always valid
+  if (!userData?.membership) return true; // Free tier is always valid
+
+  const { tier, expiresAt } = userData.membership;
+  if (tier === 'free') return true;
+
+  if (!expiresAt) return false;
   
-  const { tier, expiresAt } = userData.membership
-  if (tier === 'free') return true
-  
-  if (!expiresAt) return false
-  const expDate = new Date(expiresAt)
-  return new Date() < expDate
-}
+  const expDate = new Date(expiresAt);
+  return new Date() < expDate;
+};
 
 /**
  * Format price for display
@@ -177,15 +223,15 @@ export const isValidLicense = (userData) => {
  * @returns {string}
  */
 export const formatPrice = (price) => {
-  if (price === 0) return 'Free'
+  if (price === 0) return 'Free';
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: 'USD',
-  }).format(price)
-}
+    currency: 'AUD',
+  }).format(price);
+};
 
 /**
- * Get readable billing interval
+ * Get billing interval text
  * @param {string} interval - 'month' or 'year'
  * @returns {string}
  */
@@ -193,6 +239,27 @@ export const getBillingInterval = (interval = 'month') => {
   const intervals = {
     month: 'per month',
     year: 'per year',
+  };
+  return intervals[interval] || interval;
+};
+
+/**
+ * Check if user has a specific feature
+ * @param {Object} userData - User document
+ * @param {string} featureName - Feature key
+ * @returns {boolean}
+ */
+export const hasFeature = (userData, featureName) => {
+  const { MEMBERSHIP_TIERS, isMembershipActive } = require('./membershipUtils');
+  const { getUserTier } = require('./membershipUtils');
+  
+  const tier = getUserTier(userData);
+  const isActive = isMembershipActive(userData);
+  
+  // If membership expired, use free tier
+  if (!isActive && userData?.membership?.tier) {
+    return MEMBERSHIP_TIERS.FREE.features[featureName] || false;
   }
-  return intervals[interval] || interval
-}
+  
+  return tier.features[featureName] || false;
+};

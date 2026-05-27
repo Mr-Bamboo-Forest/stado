@@ -1,20 +1,23 @@
 {
-  "name": "project",
+  "name": "stado",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
-  "scripts": {
+    "scripts": {
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@stripe/js": "^5.1.0",
     "firebase": "^12.13.0",
+    "firebase-admin": "^12.8.0",
     "leaflet": "^1.9.4",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "react-leaflet": "^5.0.0"
+    "react-leaflet": "^5.0.0",
+    "stripe": "^14.25.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -26,5 +29,8 @@
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
     "vite": "^8.0.12"
+  },
+  "engines": {
+    "node": "18"
   }
 }
