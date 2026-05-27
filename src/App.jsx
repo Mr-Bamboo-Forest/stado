@@ -10,6 +10,7 @@ import GameDetail from './screens/GameDetail'
 import PostGame from './screens/PostGame'
 import Profile from './screens/Profile'
 import PublicProfile from './screens/PublicProfile'
+import Membership from './screens/Membership'
 
 export default function App() {
   const [user, setUser] = useState(null)
@@ -129,7 +130,22 @@ export default function App() {
     setHasSeenOnboarding(true)
   }
 
-  const showNav = screen !== 'detail' && screen !== 'publicProfile'
+  const handleShowMembership = () => {
+    setScreen('membership')
+  }
+
+  const handleMembershipBack = async () => {
+    // Refresh user data after membership changes
+    if (user) {
+      try {
+        const userSnap = await getDoc(doc(db, 'users', user.uid))
+        if (userSnap.exists()) setUserData(userSnap.data())
+      } catch (err) { console.error(err) }
+    }
+    setScreen('profile')
+  }
+
+  const showNav = screen !== 'detail' && screen !== 'publicProfile' && screen !== 'membership'
   const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 769
 
   if (checkingOnboarding || loading) {
@@ -163,16 +179,20 @@ export default function App() {
           onViewProfile={handleViewProfile} />
       )}
       {screen === 'post' && (
-        <PostGame onBack={handleGamePosted} currentUser={user} userData={userData} />
+        <PostGame onBack={handleGamePosted} currentUser={user} userData={userData} onShowMembership={handleShowMembership} />
       )}
       {screen === 'profile' && (
         <Profile onBack={() => setScreen('discover')} userData={userData}
           onUpdateUser={handleUpdateUserData} currentUser={user}
-          onViewProfile={handleViewProfile} />
+          onViewProfile={handleViewProfile} onShowMembership={handleShowMembership} />
       )}
       {screen === 'publicProfile' && (
         <PublicProfile uid={viewingProfileUid} currentUser={user}
           onBack={() => setScreen(selectedGame ? 'detail' : 'discover')} />
+      )}
+      {screen === 'membership' && (
+        <Membership onBack={handleMembershipBack} userData={userData}
+          currentUser={user} onUpdateUser={handleUpdateUserData} />
       )}
 
       {showNav && (

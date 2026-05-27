@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react'
 import { getAuth, signOut } from 'firebase/auth'
 import { doc, getDoc, collection, query, where, getDocs, updateDoc, deleteDoc } from 'firebase/firestore'
 import { db } from '../firebase'
+import { getUserTier } from '../membershipUtils'
 
-export default function Profile({ onBack, userData, onUpdateUser, currentUser, onViewProfile }) {
+export default function Profile({ onBack, userData, onUpdateUser, currentUser, onViewProfile, onShowMembership }) {
   const auth = getAuth()
   const user = auth.currentUser
   const [friendRequests, setFriendRequests] = useState([])
@@ -13,6 +14,7 @@ export default function Profile({ onBack, userData, onUpdateUser, currentUser, o
   const [findResult, setFindResult] = useState(null)
   const [findError, setFindError] = useState('')
   const [copied, setCopied] = useState(false)
+  const [copiedOwnCode, setCopiedOwnCode] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -100,6 +102,14 @@ export default function Profile({ onBack, userData, onUpdateUser, currentUser, o
   const handleCopyCode = () => {
     if (userData?.userCode) {
       navigator.clipboard.writeText(userData.userCode)
+      setCopiedOwnCode(true)
+      setTimeout(() => setCopiedOwnCode(false), 2000)
+    }
+  }
+
+  const handleCopyCodeToClipboard = () => {
+    if (userData?.userCode) {
+      navigator.clipboard.writeText(userData.userCode)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     }
@@ -113,6 +123,7 @@ export default function Profile({ onBack, userData, onUpdateUser, currentUser, o
 
   const rate = noShowRate()
   const initial = user?.displayName?.charAt(0)?.toUpperCase() || userData?.name?.charAt(0)?.toUpperCase() || '?'
+  const currentTier = getUserTier(userData)
 
   return (
     <div style={styles.screen}>
@@ -130,11 +141,36 @@ export default function Profile({ onBack, userData, onUpdateUser, currentUser, o
           )}
           <h2 style={styles.name}>{userData?.name || user?.displayName || 'Player'}</h2>
           <p style={styles.email}>{user?.email}</p>
+          
+          {/* User Code - Share with Friends */}
           {userData?.userCode && (
-            <button style={styles.codeBtn} onClick={handleCopyCode}>
-              Your code: <strong>{userData.userCode}</strong> {copied ? '✓' : '📋'}
-            </button>
+            <div style={styles.codeSection}>
+              <p style={styles.codeLabel}>Your friend code</p>
+              <div style={styles.codeDisplay}>
+                <p style={styles.codeValue}>{userData.userCode}</p>
+                <button style={styles.copyCodeBtn} onClick={handleCopyCodeToClipboard}>
+                  {copied ? '✓' : '📋'}
+                </button>
+              </div>
+              <p style={styles.codeHint}>Share this code so friends can add you</p>
+            </div>
           )}
+        </div>
+
+        {/* Membership Status */}
+        <div style={styles.membershipCard}>
+          <div style={styles.membershipHeader}>
+            <div>
+              <p style={styles.membershipLabel}>Membership</p>
+              <p style={styles.membershipTier}>
+                {currentTier.name}
+                {currentTier.id !== 'free' && ' ⭐'}
+              </p>
+            </div>
+            <button style={styles.upgradeMembershipBtn} onClick={onShowMembership}>
+              Manage
+            </button>
+          </div>
         </div>
 
         {/* Stats */}
@@ -241,7 +277,19 @@ const styles = {
   avatarImg: { width: '72px', height: '72px', borderRadius: '50%', objectFit: 'cover', marginBottom: '12px' },
   name: { fontSize: '20px', fontWeight: '700', color: '#2C2C2A', margin: '0 0 4px' },
   email: { fontSize: '13px', color: '#7A7A72', margin: '0 0 12px' },
-  codeBtn: { background: '#F1EFE8', border: '1px solid #E0DDD5', borderRadius: '20px', padding: '6px 14px', fontSize: '13px', color: '#085041', cursor: 'pointer', fontFamily: 'inherit' },
+  codeSection: { width: '100%', marginTop: '12px' },
+  codeLabel: { fontSize: '11px', fontWeight: '600', color: '#888780', textTransform: 'uppercase', margin: '0 0 8px', letterSpacing: '0.5px' },
+  codeDisplay: { display: 'flex', alignItems: 'center', gap: '8px', background: '#F1EFE8', borderRadius: '10px', padding: '10px 12px', marginBottom: '6px' },
+  codeValue: { flex: 1, fontSize: '16px', fontWeight: '700', letterSpacing: '3px', color: '#085041', margin: 0, textTransform: 'uppercase' },
+  copyCodeBtn: { background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', padding: '0 4px' },
+  codeHint: { fontSize: '11px', color: '#7A7A72', margin: 0, textAlign: 'center', fontStyle: 'italic' },
+
+  membershipCard: { background: 'white', borderRadius: '16px', padding: '16px', border: '1px solid #E0DDD5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  membershipHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' },
+  membershipLabel: { fontSize: '12px', fontWeight: '600', color: '#888780', textTransform: 'uppercase', margin: 0, marginBottom: '4px', letterSpacing: '0.4px' },
+  membershipTier: { fontSize: '16px', fontWeight: '700', color: '#2C2C2A', margin: 0 },
+  upgradeMembershipBtn: { padding: '8px 14px', background: '#1D9E75', color: 'white', fontSize: '13px', fontWeight: '600', borderRadius: '8px', border: 'none', cursor: 'pointer' },
+
   statsRow: { display: 'flex', gap: '8px' },
   stat: { flex: 1, background: 'white', borderRadius: '12px', padding: '12px', border: '1px solid #E0DDD5', textAlign: 'center' },
   statValue: { fontSize: '22px', fontWeight: '700', color: '#2C2C2A', margin: '0 0 4px' },
