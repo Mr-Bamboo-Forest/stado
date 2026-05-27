@@ -22,6 +22,7 @@ export default function App() {
   const [discoverKey, setDiscoverKey] = useState(0)
   const [showAuthPrompt, setShowAuthPrompt] = useState(false)
   const [pendingAction, setPendingAction] = useState(null)
+  const [checkoutSessionId, setCheckoutSessionId] = useState(null)
   const [hasSeenOnboarding, setHasSeenOnboarding] = useState(false)
   const [checkingOnboarding, setCheckingOnboarding] = useState(true)
   const [paymentBanner, setPaymentBanner] = useState(null)
@@ -31,31 +32,60 @@ export default function App() {
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search)
     const paymentStatus = urlParams.get('payment')
+    const sessionId = urlParams.get('session_id')
     if (!paymentStatus) return
 
     window.history.replaceState({}, document.title, '/')
+    setCheckoutSessionId(sessionId)
 
     if (paymentStatus === 'success') {
       setPaymentBanner('success')
-      const timer = setTimeout(async () => {
-        if (user) {
-          try {
-            const userSnap = await getDoc(doc(db, 'users', user.uid))
-            if (userSnap.exists()) setUserData(userSnap.data())
-          } catch (err) {
-            console.error('Post-payment re-fetch failed:', err)
-          }
-        }
-        setTimeout(() => setPaymentBanner(null), 5000)
-      }, 3000)
-      return () => clearTimeout(timer)
+      return
     }
 
     if (paymentStatus === 'cancelled') {
       setPaymentBanner('cancelled')
       setTimeout(() => setPaymentBanner(null), 5000)
     }
-  }, [user])
+  }, [])
+
+  useEffect(() => {
+    if (!user || paymentBanner !== 'success') return
+
+    const verifyPaymentAndRefresh = async () => {
+      try {
+        if (checkoutSessionId) {
+          const response = await fetch('/api/verifyCheckoutSession', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessionId: checkoutSessionId }),
+          })
+          const body = await response.json()
+          if (response.ok && body.success && body.userData) {
+            setUserData(body.userData)
+          } else {
+            throw new Error(body.error || 'Failed to verify Stripe session')
+          }
+        } else {
+          const userSnap = await getDoc(doc(db, 'users', user.uid))
+          if (userSnap.exists()) setUserData(userSnap.data())
+        }
+      } catch (err) {
+        console.error('Post-payment verification failed:', err)
+        try {
+          const userSnap = await getDoc(doc(db, 'users', user.uid))
+          if (userSnap.exists()) setUserData(userSnap.data())
+        } catch (firebaseErr) {
+          console.error('Fallback user refresh failed:', firebaseErr)
+        }
+      } finally {
+        setScreen('profile')
+        setTimeout(() => setPaymentBanner(null), 5000)
+      }
+    }
+
+    verifyPaymentAndRefresh()
+  }, [user, paymentBanner, checkoutSessionId])
 
   useEffect(() => {
     const onboardingSeen = localStorage.getItem('stado_onboarding_seen')
