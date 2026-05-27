@@ -27,6 +27,28 @@ export default function App() {
 
   const isGuest = user && user.isAnonymous
 
+  // Listen for Stripe Redirect Url parameters
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const paymentStatus = urlParams.get('payment');
+
+    if (paymentStatus === 'success') {
+      alert('Welcome to Stado Premium! Your membership is active.');
+      // Clean up parameters from url address bar
+      window.history.replaceState({}, document.title, "/");
+      
+      // Force refresh data from Firestore to reveal premium status
+      if (user) {
+        getDoc(doc(db, 'users', user.uid)).then((userSnap) => {
+          if (userSnap.exists()) setUserData(userSnap.data());
+        }).catch(err => console.error(err));
+      }
+    } else if (paymentStatus === 'cancelled') {
+      alert('Payment cancelled. You can try upgrading again whenever you are ready.');
+      window.history.replaceState({}, document.title, "/");
+    }
+  }, [user]);
+
   useEffect(() => {
     const onboardingSeen = localStorage.getItem('stado_onboarding_seen')
     setHasSeenOnboarding(!!onboardingSeen)
@@ -135,7 +157,6 @@ export default function App() {
   }
 
   const handleMembershipBack = async () => {
-    // Refresh user data after membership changes
     if (user) {
       try {
         const userSnap = await getDoc(doc(db, 'users', user.uid))
@@ -212,7 +233,7 @@ export default function App() {
             </p>
             <div style={styles.authPromptButtons}>
               <button style={styles.authPromptCancel} onClick={() => { setShowAuthPrompt(false); setPendingAction(null) }}>Cancel</button>
-              <button style={styles.authPromptSignIn} onClick={handleAuthPromptClose}>Sign in</button>
+              <button style={styles.authPromptConfirm} onClick={handleAuthPromptClose}>Sign In</button>
             </div>
           </div>
         </div>
@@ -221,53 +242,34 @@ export default function App() {
   )
 }
 
+// Minimal Navigation UI placeholder links
 function NavItem({ label, active, onClick }) {
   return (
-    <button style={{ ...styles.navItem, color: active ? '#1D9E75' : '#7A7A72' }} onClick={onClick}>
-      {label === 'Discover' ? (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-          <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
-        </svg>
-      ) : (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-          <circle cx="12" cy="8" r="4" /><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-        </svg>
-      )}
-      <span style={styles.navLabel}>{label}</span>
-    </button>
+    <button onClick={onClick} style={{
+      padding: '12px',
+      color: active ? '#1D9E75' : '#2C2C2A',
+      fontWeight: active ? '600' : '400'
+    }}>{label}</button>
   )
 }
 
-function NavPostButton({ onClick, active }) {
+function NavPostButton({ onClick }) {
   return (
-    <button style={{ ...styles.postButton, color: active ? '#1D9E75' : '#7A7A72' }} onClick={onClick}>
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-        <rect x="3" y="3" width="18" height="18" rx="5" fill={active ? '#1D9E75' : '#7A7A72'} />
-        <path d="M12 8v8M8 12h8" stroke="white" strokeWidth="2" strokeLinecap="round" />
-      </svg>
-      <span style={styles.postLabel}>Post</span>
-    </button>
+    <button onClick={onClick} style={{
+      backgroundColor: '#1D9E75',
+      color: '#F1EFE8',
+      borderRadius: '50%',
+      width: '48px',
+      height: '48px',
+      fontSize: '24px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }}>+</button>
   )
 }
 
 const styles = {
-  loading: { minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#F1EFE8', gap: '24px' },
-  wordmark: { fontSize: '32px', fontWeight: '700', letterSpacing: '-0.5px', color: '#085041' },
-  loadingDots: { display: 'flex', gap: '8px' },
-  dot: { width: '8px', height: '8px', borderRadius: '50%', background: '#1D9E75', animation: 'pulse 1.2s ease-in-out infinite' },
-  container: { flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', minHeight: '100vh' },
-  containerWithPadding: { paddingBottom: '100px' },
-  bottomNav: { position: 'fixed', left: '16px', right: '16px', bottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-around', background: 'white', borderRadius: '40px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', padding: '8px', zIndex: 50 },
-  bottomNavDesktop: { left: '50%', right: 'auto', transform: 'translateX(-50%)', bottom: '16px', width: '390px' },
-  navItem: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', flex: 1, background: 'none', border: 'none', cursor: 'pointer' },
-  navLabel: { fontSize: '11px', fontWeight: '500' },
-  postButton: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', flex: 1, background: 'none', border: 'none', cursor: 'pointer' },
-  postLabel: { fontSize: '11px', fontWeight: '600' },
-  authPromptOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', zIndex: 1000 },
-  authPromptModal: { background: 'white', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '320px' },
-  authPromptTitle: { fontSize: '18px', fontWeight: '600', color: '#2C2C2A', marginBottom: '12px', textAlign: 'center' },
-  authPromptMessage: { fontSize: '14px', color: '#7A7A72', textAlign: 'center', marginBottom: '20px', lineHeight: '1.4' },
-  authPromptButtons: { display: 'flex', gap: '12px' },
-  authPromptCancel: { flex: 1, padding: '12px', background: 'white', color: '#555550', fontSize: '15px', fontWeight: '600', borderRadius: '10px', border: '1px solid #E0DDD5', cursor: 'pointer' },
-  authPromptSignIn: { flex: 1, padding: '12px', background: '#1D9E75', color: 'white', fontSize: '15px', fontWeight: '600', borderRadius: '10px', border: 'none', cursor: 'pointer' },
+  container: { width: '100%', minHeight: '100dvh', position: 'relative' },
+  containerWithPadding: { paddingBottom: '70px' },bottomNav: {position: 'fixed', bottom: 0, left: 0, right: 0, height: '65px',backgroundColor: '#F1EFE8', borderTop: '1px solid #E0DDD5',display: 'flex', alignItems: 'center', justifyContent: 'space-around', zIndex: 1000},bottomNavDesktop: { maxWidth: '390px', left: '50%', transform: 'translateX(-50%)', borderRadius: '0 0 40px 40px' },loading: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100dvh', backgroundColor: '#F1EFE8' },wordmark: { fontSize: '32px', fontWeight: 'bold', color: '#2C2C2A', letterSpacing: '-1px' },loadingDots: { display: 'flex', gap: '6px', marginTop: '12px' },dot: { width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#1D9E75', animation: 'pulse 1.4s infinite ease-in-out both' },authPromptOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 },authPromptModal: { backgroundColor: '#F1EFE8', padding: '24px', borderRadius: '20px', width: '85%', maxWidth: '320px', textAlign: 'center' },authPromptTitle: { margin: '0 0 8px 0', color: '#2C2C2A' },authPromptMessage: { margin: '0 0 20px 0', color: '#555550', fontSize: '14px' },authPromptButtons: { display: 'flex', gap: '12px', justifyContent: 'center' },authPromptCancel: { padding: '10px 16px', color: '#2C2C2A', fontSize: '14px' },authPromptConfirm: { padding: '10px 16px', backgroundColor: '#1D9E75', color: '#F1EFE8', borderRadius: '8px', fontWeight: '500', fontSize: '14px' }
 }
