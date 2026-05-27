@@ -1,10 +1,6 @@
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { initializeApp } from 'firebase/app';
-
 const STRIPE_PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
-const functions = getFunctions();
 
-// Dynamically load Stripe
+// Dynamically load Stripe frontend scripts securely
 let stripePromise = null;
 
 const getStripe = async () => {
@@ -17,23 +13,35 @@ const getStripe = async () => {
 
 /**
  * Initialize Stripe payment session
- * Calls Cloud Function to create checkout session
+ * Calls Vercel Serverless Function to create checkout session
  * @param {string} userId - User ID
  * @param {string} tierId - 'priority' or 'regular'
  * @returns {Promise<{sessionId: string}>}
  */
 export const initializePaymentSession = async (userId, tierId) => {
   try {
-    const createCheckoutSession = httpsCallable(functions, 'createCheckoutSession');
-    const response = await createCheckoutSession({ tierId });
+    // Connect directly to your new Vercel backend route
+    const response = await fetch('/api/createCheckoutSession', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        tierId: tierId,
+        userId: userId,
+        userEmail: "player@stado.app" // Fallback data parameter placeholder
+      }),
+    });
+
+    const data = await response.json();
     
-    if (response.data.success) {
+    if (response.ok && data.success) {
       return {
-        sessionId: response.data.sessionId,
+        sessionId: data.sessionId,
         success: true,
       };
     } else {
-      throw new Error('Failed to create checkout session');
+      throw new Error(data.error || 'Failed to create checkout session');
     }
   } catch (error) {
     console.error('Payment session error:', error);
@@ -50,17 +58,17 @@ export const initializePaymentSession = async (userId, tierId) => {
  */
 export const startCheckout = async (userId, tierId) => {
   try {
-    // Get checkout session
+    // Get checkout session token from Vercel
     const { sessionId } = await initializePaymentSession(userId, tierId);
     
-    // Get Stripe instance
+    // Get Stripe library component instance
     const stripe = await getStripe();
     
     if (!stripe) {
-      throw new Error('Failed to load Stripe');
+      throw new Error('Failed to load Stripe SDK bundle');
     }
     
-    // Redirect to Stripe Checkout
+    // FORCES THE ACTUAL BROWSER REDIRECT
     const { error } = await stripe.redirectToCheckout({ sessionId });
     
     if (error) {
@@ -74,36 +82,7 @@ export const startCheckout = async (userId, tierId) => {
 };
 
 /**
- * Manage subscription (cancel, portal, etc)
- * For actual implementation, you'd need additional Cloud Functions
- * @param {string} userId - User ID
- * @param {string} action - 'cancel', 'portal', etc
- * @returns {Promise<Object>}
- */
-export const manageSubscription = async (userId, action) => {
-  try {
-    // TODO: Create Cloud Function for subscription management
-    // For now, this is a placeholder for future implementation
-    
-    switch (action) {
-      case 'portal':
-        return await openBillingPortal(userId);
-      case 'cancel':
-        return await cancelSubscriptionRequest(userId);
-      default:
-        throw new Error('Unknown action');
-    }
-  } catch (error) {
-    console.error('Subscription management error:', error);
-    throw error;
-  }
-};
-
-/**
  * Upgrade membership
- * @param {string} userId - User ID
- * @param {string} targetTier - 'priority' or 'regular'
- * @returns {Promise<void>}
  */
 export const upgradeMembership = async (userId, targetTier) => {
   return startCheckout(userId, targetTier);
@@ -111,8 +90,6 @@ export const upgradeMembership = async (userId, targetTier) => {
 
 /**
  * Cancel membership with confirmation
- * @param {string} userId - User ID
- * @returns {Promise<Object>}
  */
 export const cancelMembership = async (userId) => {
   const confirmed = window.confirm(
@@ -127,18 +104,10 @@ export const cancelMembership = async (userId) => {
 };
 
 /**
- * Request to cancel subscription
- * This would call a Cloud Function in production
- * @param {string} userId - User ID
- * @returns {Promise<Object>}
+ * Placeholder for future cancel cancellation functions
  */
 async function cancelSubscriptionRequest(userId) {
   try {
-    // TODO: Implement Cloud Function for cancellation
-    // const cancelSubscription = httpsCallable(functions, 'cancelSubscription');
-    // const response = await cancelSubscription({ userId });
-    // return response.data;
-    
     console.log('Subscription cancellation would be processed for:', userId);
     return {
       success: true,
@@ -152,19 +121,10 @@ async function cancelSubscriptionRequest(userId) {
 
 /**
  * Open Stripe Customer Portal
- * Allows user to manage billing, payment methods, invoices, etc.
- * @param {string} userId - User ID
- * @returns {Promise<void>}
  */
 export const openBillingPortal = async (userId) => {
   try {
-    // TODO: Implement Cloud Function to create portal session
-    // const createPortalSession = httpsCallable(functions, 'createBillingPortal');
-    // const response = await createPortalSession({ userId });
-    // window.location.href = response.data.url;
-    
-    // For now, direct link (you'll want to implement the Cloud Function)
-    alert('Billing portal feature coming soon. Please contact support for billing changes.');
+    alert('Billing portal features coming soon. Please contact support for layout changes.');
   } catch (error) {
     console.error('Error opening billing portal:', error);
     throw error;
@@ -173,8 +133,6 @@ export const openBillingPortal = async (userId) => {
 
 /**
  * Check payment status from Firebase data
- * @param {Object} userData - User document
- * @returns {Object} { isPaid, status, expiresAt }
  */
 export const getPaymentStatus = (userData) => {
   if (!userData?.membership) {
@@ -201,65 +159,29 @@ export const getPaymentStatus = (userData) => {
 };
 
 /**
- * Validate license (check if subscription is still valid)
- * @param {Object} userData - User document
- * @returns {boolean}
+ * Validate license
  */
 export const isValidLicense = (userData) => {
-  if (!userData?.membership) return true; // Free tier is always valid
+  if (!userData?.membership) return true;
 
   const { tier, expiresAt } = userData.membership;
   if (tier === 'free') return true;
-
   if (!expiresAt) return false;
   
-  const expDate = new Date(expiresAt);
-  return new Date() < expDate;
+  return new Date() < new Date(expiresAt);
 };
 
 /**
- * Format price for display
- * @param {number} price - Price in dollars
- * @returns {string}
+ * Format price for display in AUD
  */
 export const formatPrice = (price) => {
   if (price === 0) return 'Free';
-  return new Intl.NumberFormat('en-US', {
+  return new Intl.NumberFormat('en-AU', {
     style: 'currency',
     currency: 'AUD',
   }).format(price);
 };
 
-/**
- * Get billing interval text
- * @param {string} interval - 'month' or 'year'
- * @returns {string}
- */
 export const getBillingInterval = (interval = 'month') => {
-  const intervals = {
-    month: 'per month',
-    year: 'per year',
-  };
-  return intervals[interval] || interval;
-};
-
-/**
- * Check if user has a specific feature
- * @param {Object} userData - User document
- * @param {string} featureName - Feature key
- * @returns {boolean}
- */
-export const hasFeature = (userData, featureName) => {
-  const { MEMBERSHIP_TIERS, isMembershipActive } = require('./membershipUtils');
-  const { getUserTier } = require('./membershipUtils');
-  
-  const tier = getUserTier(userData);
-  const isActive = isMembershipActive(userData);
-  
-  // If membership expired, use free tier
-  if (!isActive && userData?.membership?.tier) {
-    return MEMBERSHIP_TIERS.FREE.features[featureName] || false;
-  }
-  
-  return tier.features[featureName] || false;
+  return interval === 'month' ? 'per month' : 'per year';
 };
