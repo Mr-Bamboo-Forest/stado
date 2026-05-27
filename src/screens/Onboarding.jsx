@@ -10,10 +10,17 @@ const POSITIONS = [
   { id: 'striker', label: 'Striker' },
 ]
 
+function generateUserCode() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+  let code = ''
+  for (let i = 0; i < 6; i++) code += chars.charAt(Math.floor(Math.random() * chars.length))
+  return code
+}
+
 export default function Onboarding({ onComplete, user }) {
   const [name, setName] = useState(user?.displayName || '')
   const [positions, setPositions] = useState([])
-  const [photoURL, setPhotoURL] = useState(user?.photoURL || null)
+  const [photoURL] = useState(user?.photoURL || null)
   const [loading, setSaving] = useState(false)
   const [error, setError] = useState('')
   const fileInputRef = useRef(null)
@@ -24,17 +31,13 @@ export default function Onboarding({ onComplete, user }) {
     )
   }
 
-  const handlePhotoChange = (e) => {
-    const file = e.target.files[0]
-    if (file) setPhotoURL(URL.createObjectURL(file))
-  }
-
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!name.trim()) return
     setSaving(true)
     setError('')
     try {
+      const userCode = generateUserCode()
       await setDoc(doc(db, 'users', user.uid), {
         name: name.trim(),
         photoURL: user?.photoURL || null,
@@ -42,6 +45,10 @@ export default function Onboarding({ onComplete, user }) {
         preferredPositions: positions,
         gamesAttended: 0,
         gamesHosted: 0,
+        noShowCount: 0,
+        noShowRate: 0,
+        friends: [],
+        userCode,
         createdAt: new Date(),
       })
       onComplete()
@@ -60,20 +67,17 @@ export default function Onboarding({ onComplete, user }) {
 
         <div style={styles.form}>
           <div style={styles.photoSection}>
-            <button type="button" style={styles.photoBtn} onClick={() => fileInputRef.current?.click()}>
+            <div style={styles.photoPlaceholder}>
               {photoURL ? (
                 <img src={photoURL} alt="Profile" style={styles.photo} />
               ) : (
-                <div style={styles.photoPlaceholder}>
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#7A7A72" strokeWidth="1.5">
-                    <circle cx="12" cy="8" r="4" />
-                    <path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" />
-                  </svg>
-                </div>
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#7A7A72" strokeWidth="1.5">
+                  <circle cx="12" cy="8" r="4" />
+                  <path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" />
+                </svg>
               )}
-              <span style={styles.photoLabel}>Add photo</span>
-            </button>
-            <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoChange} />
+            </div>
+            <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} />
           </div>
 
           <div style={styles.field}>
@@ -144,10 +148,8 @@ const styles = {
   subtitle: { fontSize: '14px', color: '#7A7A72', marginBottom: '32px', textAlign: 'center' },
   form: { display: 'flex', flexDirection: 'column', gap: '24px' },
   photoSection: { display: 'flex', justifyContent: 'center' },
-  photoBtn: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', background: 'none', border: 'none', cursor: 'pointer', padding: 0 },
   photo: { width: '96px', height: '96px', borderRadius: '50%', objectFit: 'cover', border: '3px solid #E0DDD5' },
   photoPlaceholder: { width: '96px', height: '96px', borderRadius: '50%', background: 'white', border: '3px solid #E0DDD5', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  photoLabel: { fontSize: '13px', fontWeight: '500', color: '#1D9E75' },
   field: { display: 'flex', flexDirection: 'column', gap: '6px' },
   label: { fontSize: '14px', fontWeight: '600', color: '#2C2C2A' },
   fieldHint: { fontSize: '12px', color: '#7A7A72', margin: '0 0 4px' },

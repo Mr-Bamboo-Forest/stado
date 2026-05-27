@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { onAuthStateChanged, signOut } from 'firebase/auth'
-import { doc, getDoc, setDoc } from 'firebase/firestore'
+import { doc, getDoc } from 'firebase/firestore'
 import { auth, db } from './firebase'
 import SignIn from './screens/SignIn'
 import Onboarding from './screens/Onboarding'
@@ -9,6 +9,7 @@ import Discover from './screens/Discover'
 import GameDetail from './screens/GameDetail'
 import PostGame from './screens/PostGame'
 import Profile from './screens/Profile'
+import PublicProfile from './screens/PublicProfile'
 
 export default function App() {
   const [user, setUser] = useState(null)
@@ -16,6 +17,7 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [screen, setScreen] = useState('discover')
   const [selectedGame, setSelectedGame] = useState(null)
+  const [viewingProfileUid, setViewingProfileUid] = useState(null)
   const [discoverKey, setDiscoverKey] = useState(0)
   const [showAuthPrompt, setShowAuthPrompt] = useState(false)
   const [pendingAction, setPendingAction] = useState(null)
@@ -24,7 +26,6 @@ export default function App() {
 
   const isGuest = user && user.isAnonymous
 
-  // Check if user has seen first-time onboarding
   useEffect(() => {
     const onboardingSeen = localStorage.getItem('stado_onboarding_seen')
     setHasSeenOnboarding(!!onboardingSeen)
@@ -32,11 +33,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    // Timeout fallback — if auth hangs for 6 seconds, stop loading
-    const timeout = setTimeout(() => {
-      setLoading(false)
-    }, 6000)
-
+    const timeout = setTimeout(() => setLoading(false), 6000)
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       clearTimeout(timeout)
       if (firebaseUser) {
@@ -46,15 +43,12 @@ export default function App() {
           if (userSnap.exists()) {
             setUserData(userSnap.data())
           } else if (firebaseUser.isAnonymous) {
-            // Guests skip onboarding — set minimal userData so app doesn't hang
             setUserData({ name: 'Guest', isGuest: true })
           } else {
-            // No user doc yet — onboarding will handle it
             setUserData(null)
           }
         } catch (err) {
           console.error('Error fetching user doc:', err)
-          // On error, still proceed — don't hang
           setUserData(null)
         }
       } else {
@@ -63,20 +57,23 @@ export default function App() {
       }
       setLoading(false)
     })
-
-    return () => {
-      clearTimeout(timeout)
-      unsubscribe()
-    }
+    return () => { clearTimeout(timeout); unsubscribe() }
   }, [])
 
   const goToGame = (game) => { setSelectedGame(game); setScreen('detail') }
   const goBack = () => { setSelectedGame(null); setScreen('discover') }
   const goHome = () => {
-    if (screen === 'discover') {
-      setDiscoverKey((prev) => prev + 1)
-    }
+    if (screen === 'discover') setDiscoverKey((prev) => prev + 1)
     setScreen('discover')
+  }
+
+  const handleViewProfile = (uid) => {
+    if (uid === user?.uid) {
+      setScreen('profile')
+    } else {
+      setViewingProfileUid(uid)
+      setScreen('publicProfile')
+    }
   }
 
   const handleSignInSuccess = () => setShowAuthPrompt(false)
@@ -86,9 +83,7 @@ export default function App() {
       try {
         const userSnap = await getDoc(doc(db, 'users', user.uid))
         if (userSnap.exists()) setUserData(userSnap.data())
-      } catch (err) {
-        console.error('Error after onboarding:', err)
-      }
+      } catch (err) { console.error('Error after onboarding:', err) }
     }
   }
 
@@ -134,96 +129,59 @@ export default function App() {
     setHasSeenOnboarding(true)
   }
 
-  // Show loading state while checking for first-time onboarding
-  if (checkingOnboarding) {
-    return (
-      <div style={styles.loading}>
-        <span style={styles.wordmark}>stado</span>
-        <div style={styles.loadingDots}>
-          <span style={{...styles.dot, animationDelay: '0s'}} />
-          <span style={{...styles.dot, animationDelay: '0.2s'}} />
-          <span style={{...styles.dot, animationDelay: '0.4s'}} />
-        </div>
-        <style>{`
-          @keyframes pulse {
-            0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
-            40% { opacity: 1; transform: scale(1); }
-          }
-        `}</style>
-      </div>
-    )
-  }
-
-  // Show first-time onboarding if user hasn't seen it yet
-  if (!hasSeenOnboarding) {
-    return <FirstTimeOnboarding onComplete={handleFirstTimeOnboardingComplete} />
-  }
-
-  if (loading) {
-    return (
-      <div style={styles.loading}>
-        <span style={styles.wordmark}>stado</span>
-        <div style={styles.loadingDots}>
-          <span style={{...styles.dot, animationDelay: '0s'}} />
-          <span style={{...styles.dot, animationDelay: '0.2s'}} />
-          <span style={{...styles.dot, animationDelay: '0.4s'}} />
-        </div>
-        <style>{`
-          @keyframes pulse {
-            0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
-            40% { opacity: 1; transform: scale(1); }
-          }
-        `}</style>
-      </div>
-    )
-  }
-
-  if (!user) return <SignIn onSuccess={handleSignInSuccess} />
-
-  if (user && !user.isAnonymous && !userData) {
-    return <Onboarding onComplete={handleOnboardingComplete} user={user} />
-  }
-
+  const showNav = screen !== 'detail' && screen !== 'publicProfile'
   const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 769
 
+  if (checkingOnboarding || loading) {
+    return (
+      <div style={styles.loading}>
+        <span style={styles.wordmark}>stado</span>
+        <div style={styles.loadingDots}>
+          <span style={{...styles.dot, animationDelay: '0s'}} />
+          <span style={{...styles.dot, animationDelay: '0.2s'}} />
+          <span style={{...styles.dot, animationDelay: '0.4s'}} />
+        </div>
+        <style>{`@keyframes pulse { 0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1); } }`}</style>
+      </div>
+    )
+  }
+
+  if (!hasSeenOnboarding) return <FirstTimeOnboarding onComplete={handleFirstTimeOnboardingComplete} />
+  if (!user) return <SignIn onSuccess={handleSignInSuccess} />
+  if (user && !user.isAnonymous && !userData) return <Onboarding onComplete={handleOnboardingComplete} user={user} />
+
   return (
-    <div style={{...styles.container, ...(screen === 'post' || screen === 'profile' ? styles.containerWithPadding : {})}}>
+    <div style={{...styles.container, ...(showNav ? styles.containerWithPadding : {})}}>
       {screen === 'discover' && (
-        <Discover
-          key={discoverKey}
-          onGameClick={goToGame}
-          onHomeClick={goHome}
-          userData={userData}
-          onJoinWithCode={(game) => { setSelectedGame(game); setScreen('detail') }}
-          onProfileClick={() => setScreen('profile')}
-        />
+        <Discover key={discoverKey} onGameClick={goToGame} onHomeClick={goHome}
+          userData={userData} onJoinWithCode={(game) => { setSelectedGame(game); setScreen('detail') }}
+          onProfileClick={() => setScreen('profile')} />
       )}
       {screen === 'detail' && (
-        <GameDetail
-          game={selectedGame}
-          onBack={goBack}
-          currentUser={user}
-          userData={userData}
-          onJoined={handleGameJoined}
-          onRequireAuth={handleJoinClick}
-        />
+        <GameDetail game={selectedGame} onBack={goBack} currentUser={user}
+          userData={userData} onJoined={handleGameJoined} onRequireAuth={handleJoinClick}
+          onViewProfile={handleViewProfile} />
       )}
       {screen === 'post' && (
         <PostGame onBack={handleGamePosted} currentUser={user} userData={userData} />
       )}
       {screen === 'profile' && (
-        <Profile
-          onBack={() => setScreen('discover')}
-          userData={userData}
-          onUpdateUser={handleUpdateUserData}
-        />
+        <Profile onBack={() => setScreen('discover')} userData={userData}
+          onUpdateUser={handleUpdateUserData} currentUser={user}
+          onViewProfile={handleViewProfile} />
+      )}
+      {screen === 'publicProfile' && (
+        <PublicProfile uid={viewingProfileUid} currentUser={user}
+          onBack={() => setScreen(selectedGame ? 'detail' : 'discover')} />
       )}
 
-      <nav style={{...styles.bottomNav, ...(isDesktop ? styles.bottomNavDesktop : {})}}>
-        <NavItem label="Discover" active={screen === 'discover'} onClick={() => setScreen('discover')} />
-        <NavPostButton active={screen === 'post'} onClick={handlePostClick} />
-        <NavItem label="Profile" active={screen === 'profile'} onClick={() => setScreen('profile')} />
-      </nav>
+      {showNav && (
+        <nav style={{...styles.bottomNav, ...(isDesktop ? styles.bottomNavDesktop : {})}}>
+          <NavItem label="Discover" active={screen === 'discover'} onClick={() => setScreen('discover')} />
+          <NavPostButton active={screen === 'post'} onClick={handlePostClick} />
+          <NavItem label="Profile" active={screen === 'profile'} onClick={() => setScreen('profile')} />
+        </nav>
+      )}
 
       {showAuthPrompt && (
         <div style={styles.authPromptOverlay}>
@@ -273,28 +231,14 @@ function NavPostButton({ onClick, active }) {
 }
 
 const styles = {
-  loading: {
-    minHeight: '100vh', display: 'flex', flexDirection: 'column',
-    alignItems: 'center', justifyContent: 'center', background: '#F1EFE8', gap: '24px',
-  },
+  loading: { minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#F1EFE8', gap: '24px' },
   wordmark: { fontSize: '32px', fontWeight: '700', letterSpacing: '-0.5px', color: '#085041' },
   loadingDots: { display: 'flex', gap: '8px' },
-  dot: {
-    width: '8px', height: '8px', borderRadius: '50%', background: '#1D9E75',
-    animation: 'pulse 1.2s ease-in-out infinite',
-  },
+  dot: { width: '8px', height: '8px', borderRadius: '50%', background: '#1D9E75', animation: 'pulse 1.2s ease-in-out infinite' },
   container: { flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', minHeight: '100vh' },
   containerWithPadding: { paddingBottom: '100px' },
-  bottomNav: {
-    position: 'fixed', left: '16px', right: '16px', bottom: '16px',
-    display: 'flex', alignItems: 'center', justifyContent: 'space-around',
-    background: 'white', borderRadius: '40px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-    padding: '8px', zIndex: 50,
-  },
-  bottomNavDesktop: {
-    left: '50%', right: 'auto', transform: 'translateX(-50%)', bottom: '16px',
-    width: '390px',
-  },
+  bottomNav: { position: 'fixed', left: '16px', right: '16px', bottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-around', background: 'white', borderRadius: '40px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', padding: '8px', zIndex: 50 },
+  bottomNavDesktop: { left: '50%', right: 'auto', transform: 'translateX(-50%)', bottom: '16px', width: '390px' },
   navItem: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', flex: 1, background: 'none', border: 'none', cursor: 'pointer' },
   navLabel: { fontSize: '11px', fontWeight: '500' },
   postButton: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', flex: 1, background: 'none', border: 'none', cursor: 'pointer' },
