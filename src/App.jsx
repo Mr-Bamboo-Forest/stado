@@ -253,3 +253,35 @@ const styles = {
   wordmark: { fontSize: '32px', fontWeight: 'bold', color: '#2C2C2A', letterSpacing: '-1px' },
 loadingDots: { display: 'flex', gap: '6px', marginTop: '12px' },dot: { width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#1D9E75', animation: 'pulse 1.4s infinite ease-in-out both' },authPromptOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 },authPromptModal: { backgroundColor: '#F1EFE8', padding: '24px', borderRadius: '20px', width: '85%', maxWidth: '320px', textAlign: 'center' },authPromptTitle: { margin: '0 0 8px 0', color: '#2C2C2A' },authPromptMessage: { margin: '0 0 20px 0', color: '#555550', fontSize: '14px' },authPromptButtons: { display: 'flex', gap: '12px', justifyContent: 'center' },authPromptCancel: { padding: '10px 16px', color: '#2C2C2A', fontSize: '14px' },authPromptConfirm: { padding: '10px 16px', backgroundColor: '#1D9E75', color: '#F1EFE8', borderRadius: '8px', fontWeight: '500', fontSize: '14px' }
 }
+
+function NavItem({ label, active, onClick }) {
+  return (
+    <button onClick={onClick} style={{
+      padding: '12px',
+      color: active ? '#1D9E75' : '#2C2C2A',
+      fontWeight: active ? '600' : '400',
+      border: 'none',
+      background: 'none',
+      cursor: 'pointer',
+      fontFamily: 'inherit'
+    }}>{label}</button>
+  )
+}
+
+function NavPostButton({ onClick }) {
+  return (
+    <button onClick={onClick} style={{
+      backgroundColor: '#1D9E75',
+      color: '#F1EFE8',
+      borderRadius: '50%',
+      width: '48px',
+      height: '48px',
+      fontSize: '24px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      border: 'none',
+      cursor: 'pointer'
+    }}>+</button>
+  )
+}
