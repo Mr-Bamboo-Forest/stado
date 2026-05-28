@@ -52,8 +52,9 @@ export default async function handler(req, res) {
     })
 
     const customer = checkoutSession.customer
-    
-    if (!customer || !customer.metadata?.firebaseUid) {
+    const subscription = checkoutSession.subscription
+
+    if (!customer || !customer.metadata?.firebaseUid || !subscription) {
       console.error('Stripe customer metadata missing Firebase UID:', checkoutSession.id)
       return res.status(400).json({ success: false, error: 'Invalid checkout session' })
     }
@@ -63,9 +64,13 @@ export default async function handler(req, res) {
       return res.status(403).json({ success: false, error: 'Forbidden' })
     }
 
-    const tier = getPriceToTier(subscription.items?.data?.[0]?.price?.id) || checkoutSession.metadata?.tierId || 'free'
+    if (!subscription.items?.data?.length) {
+      return res.status(400).json({ success: false, error: 'Invalid subscription data' })
+    }
+
+    const tier = getPriceToTier(subscription.items.data[0].price.id) || checkoutSession.metadata?.tierId || 'free'
     const expiresAt = subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null
-    const status = subscription.status === 'active' ? 'active' : subscription.status === 'trialing' ? 'active' : 'inactive'
+    const status = subscription.status === 'active' || subscription.status === 'trialing' ? 'active' : 'inactive'
 
     const userRef = admin.firestore().collection('users').doc(customer.metadata.firebaseUid)
     await userRef.update({

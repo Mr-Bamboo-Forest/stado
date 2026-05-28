@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { getAuth, signOut } from 'firebase/auth'
 import { doc, getDoc, collection, query, where, getDocs, updateDoc, deleteDoc } from 'firebase/firestore'
 import { db } from '../firebase'
-import { getUserTier, isMembershipActive, getDaysRemaining } from '../membershipUtils'
+import { getUserTier, getEffectiveTier, isMembershipActive, getDaysRemaining } from '../membershipUtils'
 import MembershipBadge from '../components/membershipBadge'
 
 export default function Profile({ onBack, userData, onUpdateUser, currentUser, onViewProfile, onShowMembership }) {
@@ -110,7 +110,8 @@ export default function Profile({ onBack, userData, onUpdateUser, currentUser, o
 
   const rate = noShowRate()
   const initial = user?.displayName?.charAt(0)?.toUpperCase() || userData?.name?.charAt(0)?.toUpperCase() || '?'
-  const currentTier = getUserTier(userData)
+  const rawTier = getUserTier(userData)
+  const currentTier = getEffectiveTier(userData)
   const membershipActive = isMembershipActive(userData)
   const daysLeft = getDaysRemaining(userData)
 
@@ -118,7 +119,7 @@ export default function Profile({ onBack, userData, onUpdateUser, currentUser, o
   const membershipCta = currentTier.id === 'free' ? 'Upgrade' : 'Manage'
 
   // Expired paid plan warning
-  const showExpiredWarning = currentTier.id !== 'free' && !membershipActive
+  const showExpiredWarning = rawTier.id !== 'free' && !membershipActive
 
   return (
     <div style={styles.screen}>
@@ -178,7 +179,7 @@ export default function Profile({ onBack, userData, onUpdateUser, currentUser, o
               ...styles.membershipTier,
               color: showExpiredWarning ? '#A02020' : currentTier.id !== 'free' ? '#085041' : '#2C2C2A',
             }}>
-              {showExpiredWarning ? `${currentTier.name} (expired)` : currentTier.name}
+              {showExpiredWarning ? `${rawTier.name} (expired)` : currentTier.name}
             </p>
             {!showExpiredWarning && currentTier.id !== 'free' && daysLeft > 0 && (
               <p style={styles.membershipDays}>{daysLeft} day{daysLeft === 1 ? '' : 's'} remaining</p>
