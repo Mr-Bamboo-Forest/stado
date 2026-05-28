@@ -3,7 +3,7 @@ import { doc, getDoc, collection, query, where, getDocs, addDoc, updateDoc, dele
 import { db } from '../firebase'
 import MembershipBadge from '../components/membershipBadge'
 
-export default function PublicProfile({ uid, currentUser, onBack }) {
+export default function PublicProfile({ uid, currentUser, onBack, onRequireAuth }) {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [friendStatus, setFriendStatus] = useState('none') // none | pending | friends
@@ -44,6 +44,10 @@ export default function PublicProfile({ uid, currentUser, onBack }) {
   }, [uid, currentUser])
 
   const handleAddFriend = async () => {
+    if (currentUser?.isAnonymous) {
+      onRequireAuth && onRequireAuth()
+      return
+    }
     try {
       const ref = await addDoc(collection(db, 'friendRequests'), {
         fromUid: currentUser.uid,
