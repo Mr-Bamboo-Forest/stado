@@ -19,8 +19,14 @@ export default function Profile({ onBack, userData, onUpdateUser, currentUser, o
   useEffect(() => {
     if (!user) return
     fetchFriendRequests()
-    fetchFriends()
   }, [user])
+
+  // Re-run whenever the live userData.friends list changes (e.g. when the other
+  // user accepts our request and Firestore pushes the update via onSnapshot).
+  useEffect(() => {
+    if (!user) return
+    fetchFriends()
+  }, [userData?.friends?.length])
 
   const fetchFriendRequests = async () => {
     try {
@@ -41,23 +47,15 @@ export default function Profile({ onBack, userData, onUpdateUser, currentUser, o
   }
 
   const fetchFriends = async () => {
+    const friendUids = userData?.friends || []
+    if (!friendUids.length) { setFriends([]); return }
     try {
-      // Always fetch the current user's document directly from Firestore so we
-      // get the live friends list — not the potentially-stale userData prop.
-      const userSnap = await getDoc(doc(db, 'users', user.uid))
-      if (!userSnap.exists()) return
-      const latestFriends = userSnap.data().friends || []
-      if (!latestFriends.length) { setFriends([]); return }
       const friendList = []
-      for (const uid of latestFriends) {
+      for (const uid of friendUids) {
         const snap = await getDoc(doc(db, 'users', uid))
         if (snap.exists()) friendList.push({ uid, ...snap.data() })
       }
       setFriends(friendList)
-      // Keep the parent's userData in sync with the fresh friends list
-      if (onUpdateUser) {
-        onUpdateUser({ ...userData, friends: latestFriends })
-      }
     } catch (e) { console.error(e) }
   }
 
