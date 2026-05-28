@@ -127,7 +127,17 @@ export default function Discover({ onGameClick, userData, onJoinWithCode, onProf
           id: doc.id,
           ...doc.data(),
         }))
-        .filter((game) => game.isPublic !== false)
+        .filter((game) => {
+          // Always show public games. For private games, only keep them
+          // if the current user is the host or a joined player — so the
+          // hosting/joined tabs work correctly without exposing private
+          // games to everyone in the main discover feed.
+          if (game.isPublic !== false) return true
+          const uid = auth.currentUser?.uid
+          if (!uid) return false
+          const playerUids = (game.players || []).map(p => typeof p === 'string' ? p : p?.uid)
+          return game.hostUid === uid || playerUids.includes(uid)
+        })
 
       if (!initialLoadRef.current) {
         const previousIds = prevGameIdsRef.current
