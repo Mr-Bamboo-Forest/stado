@@ -26,6 +26,20 @@ export default async function handler(req, res) {
     return res.status(405).json({ success: false, error: 'Method not allowed' })
   }
 
+  const authHeader = req.headers.authorization
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' })
+  }
+
+  const token = authHeader.slice(7)
+  let decodedToken
+  try {
+    decodedToken = await admin.auth().verifyIdToken(token)
+  } catch (error) {
+    console.error('Token verification failed:', error.message)
+    return res.status(401).json({ success: false, error: 'Invalid authentication token' })
+  }
+
   const { sessionId } = req.body || {}
 
   if (!sessionId) {
@@ -38,14 +52,15 @@ export default async function handler(req, res) {
     })
 
     const customer = checkoutSession.customer
-    const subscription = checkoutSession.subscription
-
+    
     if (!customer || !customer.metadata?.firebaseUid) {
-      return res.status(400).json({ success: false, error: 'Stripe customer metadata is missing Firebase UID' })
+      console.error('Stripe customer metadata missing Firebase UID:', checkoutSession.id)
+      return res.status(400).json({ success: false, error: 'Invalid checkout session' })
     }
 
-    if (!subscription) {
-      return res.status(400).json({ success: false, error: 'Subscription not found on checkout session' })
+    if (customer.metadata.firebaseUid !== decodedToken.uid) {
+      console.warn(`Unauthorized access attempt: user ${decodedToken.uid} tried to access session for user ${customer.metadata.firebaseUid}`)
+      return res.status(403).json({ success: false, error: 'Forbidden' })
     }
 
     const tier = getPriceToTier(subscription.items?.data?.[0]?.price?.id) || checkoutSession.metadata?.tierId || 'free'

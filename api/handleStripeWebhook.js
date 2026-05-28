@@ -40,9 +40,9 @@ export default async function handler(req, res) {
     const rawBody = await getRawBody(req);
     event = stripe.webhooks.constructEvent(rawBody, sig, endpointSecret);
   } catch (err) {
-    console.error('Webhook signature verification failed:', err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
+      console.error('Webhook signature verification failed:', err.message)
+      return res.status(400).send('Webhook Error: Invalid signature')
+}
 
   try {
     switch (event.type) {

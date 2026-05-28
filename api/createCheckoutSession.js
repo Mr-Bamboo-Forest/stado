@@ -95,7 +95,10 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
-    console.error('Checkout session compilation fault:', error);
-    return res.status(500).json({ success: false, error: error.message });
+    console.error('Checkout session creation error:', error)
+    return res.status(500).json({ 
+      success: false, 
+      error: 'Failed to create checkout session. Please try again.' 
+    })
   }
 }
