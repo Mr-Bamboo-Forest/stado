@@ -178,15 +178,15 @@ export default function Membership({ onBack, userData, currentUser, onUpdateUser
             <p style={styles.sectionLabel}>This month's usage</p>
             <div style={styles.usageRow}>
               <div>
-                <p style={styles.usageValue}>{postStatus.postsUsed}/{postStatus.postsRemaining === Infinity ? '∞' : postStatus.postsRemaining}</p>
+                <p style={styles.usageValue}>{postStatus.postsUsed}/{postStatus.postsLimit === Infinity ? '∞' : postStatus.postsLimit}</p>
                 <p style={styles.usageLabel}>Games posted</p>
               </div>
-              {postStatus.postsRemaining !== Infinity && (
+              {postStatus.postsLimit !== Infinity && (
                 <div style={styles.progressBar}>
                   <div 
                     style={{
                       ...styles.progressFill,
-                      width: `${(postStatus.postsUsed / postStatus.postsRemaining) * 100}%`
+                      width: `${(postStatus.postsUsed / postStatus.postsLimit) * 100}%`
                     }}
                   />
                 </div>

@@ -153,14 +153,15 @@ export const canPostGame = (userData) => {
   const postsUsed = userData?.monthlyPostsUsed ?? 0
 
   if (postsLimit === Infinity) {
-    return { canPost: true, postsUsed, postsRemaining: Infinity }
+    return { canPost: true, postsUsed, postsLimit, postsRemaining: Infinity }
   }
 
   const canPost = postsUsed < postsLimit
   return {
     canPost,
     postsUsed,
-    postsRemaining: postsLimit,
+    postsLimit,
+    postsRemaining: Math.max(0, postsLimit - postsUsed),
     reason: canPost
       ? null
       : `You've reached your ${postsLimit} games/month limit. Upgrade to post unlimited games.`,

@@ -202,7 +202,7 @@ export default function PostGame({ onBack, currentUser, userData, onShowMembersh
           <div style={styles.usageContent}>
             <p style={styles.usageLabel}>Games posted this month</p>
             <p style={styles.usageValue}>
-              {postStatus.postsUsed}/{postStatus.postsRemaining === Infinity ? '∞' : postStatus.postsRemaining}
+              {postStatus.postsUsed}/{postStatus.postsLimit === Infinity ? '∞' : postStatus.postsLimit}
             </p>
           </div>
           {!canPost && (
@@ -367,7 +367,7 @@ export default function PostGame({ onBack, currentUser, userData, onShowMembersh
             </div>
             <h3 style={styles.modalTitle}>Monthly limit reached</h3>
             <p style={styles.modalText}>
-              You've posted {postStatus.postsRemaining} games this month. Upgrade to post unlimited games.
+              You've posted {postStatus.postsUsed} games this month. Upgrade to post unlimited games.
             </p>
             <div style={styles.modalButtons}>
               <button style={styles.modalCancel} onClick={() => setShowLimitModal(false)}>
