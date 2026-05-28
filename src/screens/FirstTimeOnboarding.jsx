@@ -2,25 +2,19 @@ import { useState } from 'react'
 
 const SLIDES = [
   {
-    id: 1,
+    photo: '../../public/slide1.png',
     title: 'Find your game',
     subtitle: 'Discover pickup football games happening near you right now',
-    icon: 'search',
-    color: '#E1F5EE',
   },
   {
-    id: 2,
+    photo: '../../public/slide2.png',
     title: 'Show up and play',
     subtitle: 'No coordination chaos. Just open, find, and go kick.',
-    icon: 'play',
-    color: '#E1F5EE',
   },
   {
-    id: 3,
+    photo: '../../public/slide3.png',
     title: 'Build your squad',
     subtitle: 'Meet other ballers and turn strangers into regular teammates',
-    icon: 'people',
-    color: '#E1F5EE',
   },
 ]
 
@@ -35,69 +29,45 @@ export default function FirstTimeOnboarding({ onComplete }) {
     }
   }
 
-  const handleSkip = () => {
-    onComplete()
-  }
-
   const slide = SLIDES[current]
   const isLast = current === SLIDES.length - 1
 
   return (
-    <div style={styles.screen}>
+    <div style={s.screen}>
+      {/* Full-bleed background photo */}
+      <div style={{ ...s.photoBg, backgroundImage: `url(${slide.photo})` }} />
+
+      {/* Gradient overlay — dark at bottom, subtle at top */}
+      <div style={s.overlay} />
+
       {/* Skip button */}
-      <button style={styles.skipBtn} onClick={handleSkip}>
+      <button style={s.skipBtn} onClick={onComplete}>
         Skip
       </button>
 
-      {/* Content container */}
-      <div style={styles.content}>
-        {/* Icon/Visual */}
-        <div style={{ ...styles.icon, background: slide.color }}>
-          {slide.icon === 'search' && (
-            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#1D9E75" strokeWidth="1.5" strokeLinecap="round">
-              <circle cx="11" cy="11" r="8" />
-              <path d="M21 21l-4.35-4.35" />
-            </svg>
-          )}
-          {slide.icon === 'play' && (
-            <svg width="64" height="64" viewBox="0 0 24 24" fill="#1D9E75" stroke="none">
-              <circle cx="12" cy="12" r="10" />
-              <polygon points="10 8 20 12 10 16" fill="#F1EFE8" />
-            </svg>
-          )}
-          {slide.icon === 'people' && (
-            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#1D9E75" strokeWidth="1.5" strokeLinecap="round">
-              <circle cx="9" cy="7" r="3" />
-              <path d="M15 7a3 3 0 1 1 0 6 3 3 0 0 1 0-6" />
-              <path d="M7 12h12v4a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4v-4" />
-            </svg>
-          )}
-        </div>
-
-        {/* Text content */}
-        <div style={styles.textContent}>
-          <h1 style={styles.title}>{slide.title}</h1>
-          <p style={styles.subtitle}>{slide.subtitle}</p>
-        </div>
+      {/* Floating text bubble — vertically centred */}
+      <div style={s.bubble}>
+        <h1 style={s.bubbleTitle}>{slide.title}</h1>
+        <p style={s.bubbleText}>{slide.subtitle}</p>
       </div>
 
-      {/* Dots and button container */}
-      <div style={styles.footer}>
-        {/* Dots */}
-        <div style={styles.dots}>
-          {SLIDES.map((_, i) => (
-            <div
-              key={i}
-              style={{
-                ...styles.dot,
-                background: i === current ? '#1D9E75' : '#E0DDD5',
-              }}
-            />
-          ))}
-        </div>
+      {/* Dot indicators */}
+      <div style={s.dots}>
+        {SLIDES.map((_, i) => (
+          <div
+            key={i}
+            style={{
+              ...s.dot,
+              background: i === current ? 'white' : 'rgba(255,255,255,0.35)',
+              width: i === current ? '22px' : '8px',
+            }}
+          />
+        ))}
+      </div>
 
-        {/* Next/Get Started button */}
-        <button style={styles.nextBtn} onClick={handleNext}>
+      {/* Next / Get started button */}
+      <div style={s.bottomBar}>
+        <button style={s.nextBtn} onClick={handleNext}>
           {isLast ? 'Get started' : 'Next'}
         </button>
       </div>
@@ -105,106 +75,107 @@ export default function FirstTimeOnboarding({ onComplete }) {
   )
 }
 
-const styles = {
+const s = {
   screen: {
-    display: 'flex',
-    flexDirection: 'column',
-    minHeight: '100vh',
-    background: '#F1EFE8',
-    padding: '24px',
-    position: 'relative',
-  },
-  skipBtn: {
-    alignSelf: 'flex-end',
-    background: 'none',
-    border: 'none',
-    color: '#7A7A72',
-    fontSize: '14px',
-    fontWeight: '500',
-    cursor: 'pointer',
-    padding: '8px 0',
-    marginBottom: '24px',
-  },
-  content: {
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '40px',
+    minHeight: '100vh',
+    position: 'relative',
+    overflow: 'hidden',
+    background: '#0d1f12',
   },
-  icon: {
-    width: '120px',
-    height: '120px',
-    borderRadius: '32px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    animation: 'fadeInScale 0.6s ease-out',
+  photoBg: {
+    position: 'absolute',
+    inset: 0,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    transition: 'background-image 0.4s ease',
   },
-  textContent: {
+  overlay: {
+    position: 'absolute',
+    inset: 0,
+    background: 'linear-gradient(to bottom, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.1) 40%, rgba(0,0,0,0.72) 100%)',
+  },
+  skipBtn: {
+    position: 'absolute',
+    top: '52px',
+    right: '20px',
+    zIndex: 10,
+    background: 'rgba(255,255,255,0.18)',
+    backdropFilter: 'blur(10px)',
+    WebkitBackdropFilter: 'blur(10px)',
+    border: '1px solid rgba(255,255,255,0.28)',
+    borderRadius: '20px',
+    padding: '8px 20px',
+    color: 'white',
+    fontSize: '14px',
+    fontWeight: '500',
+    cursor: 'pointer',
+    letterSpacing: '0.01em',
+  },
+  bubble: {
+    position: 'absolute',
+    top: '50%',
+    left: '24px',
+    right: '24px',
+    transform: 'translateY(-50%)',
+    zIndex: 10,
+    background: 'rgba(0,0,0,0.38)',
+    backdropFilter: 'blur(16px)',
+    WebkitBackdropFilter: 'blur(16px)',
+    border: '1px solid rgba(255,255,255,0.15)',
+    borderRadius: '24px',
+    padding: '28px 26px',
     textAlign: 'center',
-    maxWidth: '280px',
   },
-  title: {
+  bubbleTitle: {
+    color: 'white',
     fontSize: '28px',
     fontWeight: '700',
-    color: '#2C2C2A',
-    margin: 0,
-    marginBottom: '12px',
-    letterSpacing: '-0.5px',
+    margin: '0 0 10px',
+    lineHeight: '1.15',
+    letterSpacing: '-0.02em',
   },
-  subtitle: {
+  bubbleText: {
+    color: 'rgba(255,255,255,0.8)',
     fontSize: '15px',
-    color: '#7A7A72',
-    lineHeight: '1.5',
     margin: 0,
-  },
-  footer: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '24px',
-    alignItems: 'center',
+    lineHeight: '1.55',
   },
   dots: {
+    position: 'absolute',
+    bottom: '104px',
+    left: 0,
+    right: 0,
     display: 'flex',
-    gap: '8px',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: '6px',
+    zIndex: 10,
   },
   dot: {
-    width: '8px',
     height: '8px',
-    borderRadius: '50%',
-    transition: 'background 0.3s ease',
+    borderRadius: '4px',
+    transition: 'width 0.3s ease, background 0.3s ease',
+  },
+  bottomBar: {
+    position: 'absolute',
+    bottom: '32px',
+    left: '24px',
+    right: '24px',
+    zIndex: 10,
   },
   nextBtn: {
     width: '100%',
-    maxWidth: '240px',
-    padding: '14px 0',
+    padding: '16px',
     background: '#1D9E75',
     color: 'white',
-    fontSize: '15px',
+    fontSize: '16px',
     fontWeight: '600',
-    borderRadius: '12px',
+    borderRadius: '16px',
     border: 'none',
     cursor: 'pointer',
-    transition: 'opacity 0.2s ease',
+    letterSpacing: '0.01em',
   },
-}
-
-// Add animation
-if (typeof document !== 'undefined') {
-  const style = document.createElement('style')
-  style.textContent = `
-    @keyframes fadeInScale {
-      from {
-        opacity: 0;
-        transform: scale(0.8);
-      }
-      to {
-        opacity: 1;
-        transform: scale(1);
-      }
-    }
-  `
-  document.head.appendChild(style)
 }
