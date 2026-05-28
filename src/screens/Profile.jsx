@@ -268,7 +268,7 @@ export default function Profile({ onBack, userData, onUpdateUser, currentUser, o
           <div style={styles.findRow}>
             <input
               style={styles.findInput}
-              placeholder="Enter code e.g. XK92BT"
+              placeholder="Enter code"
               value={findCode}
               onChange={(e) => setFindCode(e.target.value.toUpperCase().slice(0, 6))}
               maxLength={6}
