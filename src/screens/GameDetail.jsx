@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { doc, updateDoc, increment, getDoc, addDoc, collection, deleteDoc } from 'firebase/firestore'
+import { doc, updateDoc, increment, getDoc, addDoc, collection, deleteDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 
 export default function GameDetail({ game, onBack, currentUser, userData, onJoined, onRequireAuth, onViewProfile }) {
@@ -137,9 +137,13 @@ export default function GameDetail({ game, onBack, currentUser, userData, onJoin
         // Players with no status marked are left unchanged
       }
 
-      // Archive the game with the attendance record
-      const gameData = { ...game, status: 'completed', completedAt: new Date(), attendanceRecord: attendance }
-      delete gameData.id
+      // Archive the game — strip undefined fields (e.g. joinCode on public games)
+      // because Firestore rejects documents containing undefined values
+      const rawGameData = { ...game, status: 'completed', completedAt: serverTimestamp(), attendanceRecord: attendance }
+      delete rawGameData.id
+      const gameData = Object.fromEntries(
+        Object.entries(rawGameData).filter(([, v]) => v !== undefined)
+      )
       await addDoc(collection(db, 'archivedGames'), gameData)
       await deleteDoc(doc(db, 'games', game.id))
 
