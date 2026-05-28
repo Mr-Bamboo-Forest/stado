@@ -190,7 +190,7 @@ export default function App() {
     <div style={{...styles.container, ...(showNav ? styles.containerWithPadding : {})}}>
       {paymentBanner && (
         <div style={paymentBanner === 'success' ? styles.bannerSuccess : styles.bannerCancel}>
-          {paymentBanner === 'success' ? '🎉 Welcome to Stado Premium! Your membership is active.' : 'Payment cancelled. You can try upgrading again whenever you\'re ready.'}
+          {paymentBanner === 'success' ? 'Welcome to Stado Premium! Your membership is active.' : 'Payment cancelled. You can try upgrading again whenever you\'re ready.'}
         </div>
       )}
 
