@@ -8,7 +8,7 @@ if (!admin.apps.length) {
     credential: admin.credential.cert({
       projectId: process.env.FIREBASE_PROJECT_ID,
       clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\n/g, '\n'),
+      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
     }),
   })
 }
@@ -54,13 +54,25 @@ export default async function handler(req, res) {
     const customer = checkoutSession.customer
     const subscription = checkoutSession.subscription
 
-    if (!customer || !customer.metadata?.firebaseUid || !subscription) {
-      console.error('Stripe customer metadata missing Firebase UID:', checkoutSession.id)
+    // customer may come back as an expanded object or a plain string ID.
+    // firebaseUid is set on both the customer metadata and the session metadata —
+    // fall back to the session metadata if the customer object doesn't have it.
+    const customerMetaUid =
+      typeof customer === 'object' ? customer?.metadata?.firebaseUid : null
+    const firebaseUid =
+      customerMetaUid || checkoutSession.metadata?.firebaseUid
+
+    if (!firebaseUid || !subscription) {
+      console.error('Could not determine firebaseUid for session:', checkoutSession.id, {
+        hasCustomer: !!customer,
+        customerType: typeof customer,
+        sessionMeta: checkoutSession.metadata,
+      })
       return res.status(400).json({ success: false, error: 'Invalid checkout session' })
     }
 
-    if (customer.metadata.firebaseUid !== decodedToken.uid) {
-      console.warn(`Unauthorized access attempt: user ${decodedToken.uid} tried to access session for user ${customer.metadata.firebaseUid}`)
+    if (firebaseUid !== decodedToken.uid) {
+      console.warn(`Unauthorized: user ${decodedToken.uid} tried to access session for ${firebaseUid}`)
       return res.status(403).json({ success: false, error: 'Forbidden' })
     }
 
@@ -68,18 +80,33 @@ export default async function handler(req, res) {
       return res.status(400).json({ success: false, error: 'Invalid subscription data' })
     }
 
-    const tier = getPriceToTier(subscription.items.data[0].price.id) || checkoutSession.metadata?.tierId || 'free'
-    const expiresAt = subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null
-    const status = subscription.status === 'active' || subscription.status === 'trialing' ? 'active' : 'inactive'
+    // Resolve tier from price ID, fall back to session metadata tierId
+    const tier =
+      getPriceToTier(subscription.items.data[0].price.id) ||
+      checkoutSession.metadata?.tierId ||
+      'free'
 
-    const userRef = admin.firestore().collection('users').doc(customer.metadata.firebaseUid)
+    const expiresAt = subscription.current_period_end
+      ? new Date(subscription.current_period_end * 1000)
+      : null
+    const status =
+      subscription.status === 'active' || subscription.status === 'trialing'
+        ? 'active'
+        : 'inactive'
+
+    const customerId =
+      typeof customer === 'object' ? customer.id : customer
+
+    const userRef = admin.firestore().collection('users').doc(firebaseUid)
     await userRef.update({
       'membership.tier': tier,
       'membership.stripeSubscriptionId': subscription.id,
-      'membership.stripeCustomerId': customer.id,
+      'membership.stripeCustomerId': customerId,
       'membership.expiresAt': expiresAt,
       'membership.status': status,
-      'membership.currentPeriodStart': subscription.current_period_start ? new Date(subscription.current_period_start * 1000) : null,
+      'membership.currentPeriodStart': subscription.current_period_start
+        ? new Date(subscription.current_period_start * 1000)
+        : null,
       'membership.currentPeriodEnd': expiresAt,
       'membership.updated': new Date(),
     })
