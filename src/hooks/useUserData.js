@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 
+// Module-level cache — intentionally NOT cleared between re-renders,
+// but we compare membership tier so stale "free" data doesn't get served
+// after an upgrade.
 const userCache = new Map();
 
 export function useUserData(userId) {
@@ -15,12 +18,15 @@ export function useUserData(userId) {
       return;
     }
 
-    // Serve cached data immediately
-    if (userCache.has(userId)) {
-      setUserData(userCache.get(userId));
+    // Serve cached data immediately only if it has a membership tier set,
+    // so we never flash stale "free" data over a paid membership.
+    const cached = userCache.get(userId);
+    if (cached) {
+      setUserData(cached);
     }
 
-    // But keep listening for updates
+    // Live listener — this is the authoritative source and will always
+    // override the cache whenever Firestore data changes (e.g. after payment).
     const unsubscribe = onSnapshot(
       doc(db, 'users', userId),
       (snap) => {
@@ -32,7 +38,7 @@ export function useUserData(userId) {
         setLoading(false);
       },
       (error) => {
-        console.error('Error:', error);
+        console.error('useUserData snapshot error:', error);
         setLoading(false);
       }
     );
@@ -41,4 +47,10 @@ export function useUserData(userId) {
   }, [userId]);
 
   return { userData, loading };
+}
+
+// Call this after a payment to evict the cache so the next render
+// doesn't flash the old "free" tier before onSnapshot fires.
+export function bustUserCache(userId) {
+  if (userId) userCache.delete(userId);
 }

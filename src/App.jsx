@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { auth } from './firebase'
-import { useUserData } from './hooks/useUserData'
+import { useUserData, bustUserCache } from './hooks/useUserData'
 import SignIn from './screens/SignIn'
 import Onboarding from './screens/Onboarding'
 import FirstTimeOnboarding from './screens/FirstTimeOnboarding'
@@ -56,10 +56,13 @@ export default function App() {
     if (!user || paymentBanner !== 'success') return
 
     const handlePaymentVerify = async () => {
+      // Evict the cache immediately so the profile doesn't flash stale "free"
+      // data while we wait for Firestore to be updated and onSnapshot to fire.
+      bustUserCache(user.uid)
       try {
         if (checkoutSessionId) {
-          const token = await user.getIdToken()
-          await fetch('/api/verifyCheckoutSession', {
+          const token = await user.getIdToken(/* forceRefresh= */ true)
+          const res = await fetch('/api/verifyCheckoutSession', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -67,13 +70,18 @@ export default function App() {
             },
             body: JSON.stringify({ sessionId: checkoutSessionId }),
           })
+          const data = await res.json()
+          if (!res.ok || !data.success) {
+            console.error('Verification failed:', data.error)
+          }
         }
       } catch (err) {
         console.error('Post-payment verification failed:', err)
-      } finally {
-        setScreen('profile')
-        setTimeout(() => setPaymentBanner(null), 5000)
       }
+      // Navigate to profile — the onSnapshot listener in useUserData will
+      // automatically reflect the updated membership once Firestore is written.
+      setScreen('profile')
+      setTimeout(() => setPaymentBanner(null), 5000)
     }
 
     handlePaymentVerify()
