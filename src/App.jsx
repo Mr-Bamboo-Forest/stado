@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
 import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { auth } from './firebase'
-// ✅ ADDED: Your hook import
-import { useUserData } from './hooks/useUserData' 
+import { useUserData } from './hooks/useUserData'
 import SignIn from './screens/SignIn'
 import Onboarding from './screens/Onboarding'
 import FirstTimeOnboarding from './screens/FirstTimeOnboarding'
@@ -15,9 +14,8 @@ import Membership from './screens/Membership'
 
 export default function App() {
   const [user, setUser] = useState(null)
-  // ✅ ONE LINE: Handles all user data fetching
   const { userData, loading: userDataLoading } = useUserData(user?.uid)
-  
+
   const [authLoading, setAuthLoading] = useState(true)
   const [screen, setScreen] = useState('discover')
   const [selectedGame, setSelectedGame] = useState(null)
@@ -53,25 +51,22 @@ export default function App() {
     }
   }, [])
 
-  // 📍 HERE IS WHERE YOUR TOKEN BLOCK WAS PLACED:
-  // Payment verification - no manual fetches
+  // Payment verification
   useEffect(() => {
     if (!user || paymentBanner !== 'success') return
 
     const handlePaymentVerify = async () => {
       try {
         if (checkoutSessionId) {
-          // ✅ YOUR TOKEN CODE:
           const token = await user.getIdToken()
           await fetch('/api/verifyCheckoutSession', {
             method: 'POST',
-            headers: { 
+            headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}` // ✅ SEND TOKEN
+              'Authorization': `Bearer ${token}`
             },
             body: JSON.stringify({ sessionId: checkoutSessionId }),
           })
-          // ✅ userData auto-updates via hook
         }
       } catch (err) {
         console.error('Post-payment verification failed:', err)
@@ -84,21 +79,20 @@ export default function App() {
     handlePaymentVerify()
   }, [user, paymentBanner, checkoutSessionId])
 
-  // Check Onboarding status on load
+  // Check onboarding status on load
   useEffect(() => {
     const onboardingSeen = localStorage.getItem('stado_onboarding_seen')
     setHasSeenOnboarding(!!onboardingSeen)
     setCheckingOnboarding(false)
   }, [])
 
-  // Auth state effect - simple!
+  // Auth state
   useEffect(() => {
     const timeout = setTimeout(() => setAuthLoading(false), 6000)
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       clearTimeout(timeout)
       setUser(firebaseUser)
       setAuthLoading(false)
-      // ✅ That's it! useUserData hook handles the rest automatically
     })
     return () => { clearTimeout(timeout); unsubscribe() }
   }, [])
@@ -120,20 +114,9 @@ export default function App() {
   }
 
   const handleSignInSuccess = () => setShowAuthPrompt(false)
-
-  // All handlers now just do their thing
-  const handleOnboardingComplete = () => {
-    // ✅ userData auto-syncs via hook
-  }
-
-  const handleGamePosted = () => {
-    // ✅ userData auto-syncs via hook
-    setScreen('discover')
-  }
-
-  const handleGameJoined = () => {
-    // ✅ userData auto-syncs via hook
-  }
+  const handleOnboardingComplete = () => {}
+  const handleGamePosted = () => { setScreen('discover') }
+  const handleGameJoined = () => {}
 
   const handlePostClick = () => {
     if (isGuest) { setPendingAction('post'); setShowAuthPrompt(true) }
@@ -156,14 +139,8 @@ export default function App() {
     setHasSeenOnboarding(true)
   }
 
-  const handleShowMembership = () => {
-    setScreen('membership')
-  }
-
-  const handleMembershipBack = () => {
-    // ✅ userData auto-syncs via hook
-    setScreen('profile')
-  }
+  const handleShowMembership = () => { setScreen('membership') }
+  const handleMembershipBack = () => { setScreen('profile') }
 
   const showNav = screen !== 'detail' && screen !== 'publicProfile' && screen !== 'membership'
   const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 769
@@ -191,7 +168,7 @@ export default function App() {
     <div style={{...styles.container, ...(showNav ? styles.containerWithPadding : {})}}>
       {paymentBanner && (
         <div style={paymentBanner === 'success' ? styles.bannerSuccess : styles.bannerCancel}>
-          {paymentBanner === 'success' ? 'Payment Successful! Welcome to membership.' : 'Payment Cancelled.'}
+          {paymentBanner === 'success' ? '🎉 Welcome to Stado Premium! Your membership is active.' : 'Payment cancelled. You can try upgrading again whenever you\'re ready.'}
         </div>
       )}
 
@@ -229,12 +206,16 @@ export default function App() {
       )}
 
       {showAuthPrompt && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.modalContent}>
-            <h3>Account Required</h3>
-            <p>You need a full account to complete this action ({pendingAction}).</p>
-            <button onClick={handleAuthPromptClose}>Sign In / Register</button>
-            <button onClick={() => setShowAuthPrompt(false)}>Cancel</button>
+        <div style={styles.authPromptOverlay}>
+          <div style={styles.authPromptModal}>
+            <h3 style={styles.authPromptTitle}>Sign in required</h3>
+            <p style={styles.authPromptMessage}>
+              {pendingAction === 'post' ? 'You need an account to post games.' : 'You need an account to join games.'}
+            </p>
+            <div style={styles.authPromptButtons}>
+              <button style={styles.authPromptCancel} onClick={() => { setShowAuthPrompt(false); setPendingAction(null) }}>Cancel</button>
+              <button style={styles.authPromptSignIn} onClick={handleAuthPromptClose}>Sign in</button>
+            </div>
           </div>
         </div>
       )}
@@ -242,12 +223,34 @@ export default function App() {
   )
 }
 
-// Dummy structural UI pieces for bottom navigation components referenced in layout
+// ✅ Original styled nav components preserved exactly
 function NavItem({ label, active, onClick }) {
-  return <button onClick={onClick} style={{ background: 'none', border: 'none', fontWeight: active ? 'bold' : 'normal' }}>{label}</button>
+  return (
+    <button style={{ ...styles.navItem, color: active ? '#1D9E75' : '#7A7A72' }} onClick={onClick}>
+      {label === 'Discover' ? (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
+        </svg>
+      ) : (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <circle cx="12" cy="8" r="4" /><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+        </svg>
+      )}
+      <span style={styles.navLabel}>{label}</span>
+    </button>
+  )
 }
-function NavPostButton({ onClick }) {
-  return <button onClick={onClick} style={{ borderRadius: '50%', padding: '8px 16px' }}>+</button>
+
+function NavPostButton({ onClick, active }) {
+  return (
+    <button style={{ ...styles.postButton, color: active ? '#1D9E75' : '#7A7A72' }} onClick={onClick}>
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+        <rect x="3" y="3" width="18" height="18" rx="5" fill={active ? '#1D9E75' : '#7A7A72'} />
+        <path d="M12 8v8M8 12h8" stroke="white" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+      <span style={styles.postLabel}>Post</span>
+    </button>
+  )
 }
 
 const styles = {
@@ -270,5 +273,6 @@ const styles = {
   authPromptButtons: { display: 'flex', gap: '12px' },
   authPromptCancel: { flex: 1, padding: '12px', background: 'white', color: '#555550', fontSize: '15px', fontWeight: '600', borderRadius: '10px', border: '1px solid #E0DDD5', cursor: 'pointer' },
   authPromptSignIn: { flex: 1, padding: '12px', background: '#1D9E75', color: 'white', fontSize: '15px', fontWeight: '600', borderRadius: '10px', border: 'none', cursor: 'pointer' },
-  banner: { position: 'fixed', top: '16px', left: '50%', transform: 'translateX(-50%)', zIndex: 2000, color: 'white', borderRadius: '12px', padding: '12px 20px', fontSize: '14px', fontWeight: '600', boxShadow: '0 4px 16px rgba(0,0,0,0.2)', whiteSpace: 'nowrap', maxWidth: 'calc(100% - 48px)', textAlign: 'center' },
+  bannerSuccess: { position: 'fixed', top: '16px', left: '50%', transform: 'translateX(-50%)', zIndex: 2000, background: '#1D9E75', color: 'white', borderRadius: '12px', padding: '12px 20px', fontSize: '14px', fontWeight: '600', boxShadow: '0 4px 16px rgba(0,0,0,0.2)', whiteSpace: 'nowrap', maxWidth: 'calc(100% - 48px)', textAlign: 'center' },
+  bannerCancel: { position: 'fixed', top: '16px', left: '50%', transform: 'translateX(-50%)', zIndex: 2000, background: '#7A7A72', color: 'white', borderRadius: '12px', padding: '12px 20px', fontSize: '14px', fontWeight: '600', boxShadow: '0 4px 16px rgba(0,0,0,0.2)', whiteSpace: 'nowrap', maxWidth: 'calc(100% - 48px)', textAlign: 'center' },
 }
