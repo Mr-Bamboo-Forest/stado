@@ -11,6 +11,8 @@ import PostGame from './screens/PostGame'
 import Profile from './screens/Profile'
 import PublicProfile from './screens/PublicProfile'
 import Membership from './screens/Membership'
+import PrivacyPolicy from './screens/PrivacyPolicy'
+import TermsOfService from './screens/TermsOfService'
 
 export default function App() {
   const [user, setUser] = useState(null)
@@ -159,8 +161,10 @@ export default function App() {
 
   const handleShowMembership = () => { setScreen('membership') }
   const handleMembershipBack = () => { setScreen('profile') }
+  const handleShowPrivacy = () => { setScreen('privacy') }
+  const handleShowTerms = () => { setScreen('terms') }
 
-  const showNav = screen !== 'detail' && screen !== 'publicProfile' && screen !== 'membership'
+  const showNav = screen !== 'detail' && screen !== 'publicProfile' && screen !== 'membership' && screen !== 'privacy' && screen !== 'terms'
   const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 769
   const isCombinedLoading = checkingOnboarding || authLoading || (user && userDataLoading)
 
@@ -205,7 +209,8 @@ export default function App() {
       )}
       {screen === 'profile' && (
         <Profile onBack={() => setScreen('discover')} userData={userData}
-          currentUser={user} onViewProfile={handleViewProfile} onShowMembership={handleShowMembership} />
+          currentUser={user} onViewProfile={handleViewProfile} onShowMembership={handleShowMembership}
+          onShowPrivacy={handleShowPrivacy} onShowTerms={handleShowTerms} />
       )}
       {screen === 'publicProfile' && (
         <PublicProfile uid={viewingProfileUid} currentUser={user}
@@ -213,6 +218,12 @@ export default function App() {
       )}
       {screen === 'membership' && (
         <Membership onBack={handleMembershipBack} userData={userData} currentUser={user} onRequireAuth={handleMembershipClick} />
+      )}
+      {screen === 'privacy' && (
+        <PrivacyPolicy onBack={() => setScreen('profile')} />
+      )}
+      {screen === 'terms' && (
+        <TermsOfService onBack={() => setScreen('profile')} />
       )}
 
       {showNav && (
