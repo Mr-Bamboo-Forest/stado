@@ -141,6 +141,11 @@ export default function App() {
     return true
   }
 
+  const handleMembershipClick = () => {
+    if (isGuest) { setPendingAction('membership'); setShowAuthPrompt(true); return false }
+    return true
+  }
+
   const handleAuthPromptClose = async () => {
     setShowAuthPrompt(false)
     setPendingAction(null)
@@ -207,7 +212,7 @@ export default function App() {
           onBack={() => setScreen(selectedGame ? 'detail' : 'discover')} onRequireAuth={handleAddFriendClick} />
       )}
       {screen === 'membership' && (
-        <Membership onBack={handleMembershipBack} userData={userData} currentUser={user} />
+        <Membership onBack={handleMembershipBack} userData={userData} currentUser={user} onRequireAuth={handleMembershipClick} />
       )}
 
       {showNav && (
@@ -223,7 +228,7 @@ export default function App() {
           <div style={styles.authPromptModal}>
             <h3 style={styles.authPromptTitle}>Sign in required</h3>
             <p style={styles.authPromptMessage}>
-              {pendingAction === 'post' ? 'You need an account to post games.' : pendingAction === 'friend' ? 'You need an account to add friends.' : 'You need an account to join games.'}
+              {pendingAction === 'post' ? 'You need an account to post games.' : pendingAction === 'friend' ? 'You need an account to add friends.' : pendingAction === 'membership' ? 'You need an account to upgrade your membership.' : 'You need an account to join games.'}
             </p>
             <div style={styles.authPromptButtons}>
               <button style={styles.authPromptCancel} onClick={() => { setShowAuthPrompt(false); setPendingAction(null) }}>Cancel</button>

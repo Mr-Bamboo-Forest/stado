@@ -12,7 +12,7 @@ import {
 } from '../membershipUtils'
 import { upgradeMembership, cancelMembership, openBillingPortal } from '../stripeUtils'
 
-export default function Membership({ onBack, userData, currentUser, onUpdateUser }) {
+export default function Membership({ onBack, userData, currentUser, onUpdateUser, onRequireAuth }) {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
   const [selectedTier, setSelectedTier] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -56,6 +56,10 @@ export default function Membership({ onBack, userData, currentUser, onUpdateUser
   ]
 
   const handleUpgrade = async (tierId) => {
+    if (currentUser?.isAnonymous) {
+      onRequireAuth && onRequireAuth()
+      return
+    }
     if (!stripeLoaded) {
       setError('Stripe is not available. Please refresh the page.')
       return
