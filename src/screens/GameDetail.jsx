@@ -151,7 +151,7 @@ export default function GameDetail({ game, onBack, currentUser, userData, onJoin
       onBack()
     } catch (err) {
       console.error('Error completing game:', err)
-      alert('Failed to complete game. Please try again.')
+      alert(`Failed to complete game: ${err?.message || err}`)
     } finally {
       setSavingAttendance(false)
     }
