@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getAuth, signOut } from 'firebase/auth'
-import { doc, getDoc, collection, query, where, getDocs, updateDoc, deleteDoc } from 'firebase/firestore'
+import { doc, getDoc, collection, query, where, getDocs, updateDoc, deleteDoc, arrayUnion } from 'firebase/firestore'
 import { db } from '../firebase'
 import { getUserTier, getEffectiveTier, isMembershipActive, getDaysRemaining } from '../membershipUtils'
 import MembershipBadge from '../components/membershipBadge'
@@ -54,12 +54,12 @@ export default function Profile({ onBack, userData, onUpdateUser, currentUser, o
 
   const handleAcceptFriend = async (request) => {
     try {
-      await updateDoc(doc(db, 'friendRequests', request.id), { status: 'accepted' })
+      // Use arrayUnion so we never overwrite either user's existing friends list
       await updateDoc(doc(db, 'users', user.uid), {
-        friends: [...(userData?.friends || []), request.fromUid]
+        friends: arrayUnion(request.fromUid)
       })
       await updateDoc(doc(db, 'users', request.fromUid), {
-        friends: [...(request.fromUser?.friends || []), user.uid]
+        friends: arrayUnion(user.uid)
       })
       await deleteDoc(doc(db, 'friendRequests', request.id))
       fetchFriendRequests()

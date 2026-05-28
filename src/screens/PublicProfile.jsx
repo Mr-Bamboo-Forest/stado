@@ -8,6 +8,7 @@ export default function PublicProfile({ uid, currentUser, onBack, onRequireAuth 
   const [loading, setLoading] = useState(true)
   const [friendStatus, setFriendStatus] = useState('none') // none | pending | friends
   const [friendRequestId, setFriendRequestId] = useState(null)
+  const [sendingRequest, setSendingRequest] = useState(false)
 
   useEffect(() => {
     if (!uid) return
@@ -48,6 +49,8 @@ export default function PublicProfile({ uid, currentUser, onBack, onRequireAuth 
       onRequireAuth && onRequireAuth()
       return
     }
+    if (sendingRequest || friendStatus !== 'none') return
+    setSendingRequest(true)
     try {
       const ref = await addDoc(collection(db, 'friendRequests'), {
         fromUid: currentUser.uid,
@@ -58,6 +61,7 @@ export default function PublicProfile({ uid, currentUser, onBack, onRequireAuth 
       setFriendStatus('pending')
       setFriendRequestId(ref.id)
     } catch (e) { console.error(e) }
+    setSendingRequest(false)
   }
 
   const handleCancelRequest = async () => {
@@ -144,7 +148,9 @@ export default function PublicProfile({ uid, currentUser, onBack, onRequireAuth 
           {currentUser?.uid !== uid && (
             <div style={{ marginTop: '12px' }}>
               {friendStatus === 'none' && (
-                <button style={styles.friendBtn} onClick={handleAddFriend}>Add friend</button>
+                <button style={{ ...styles.friendBtn, opacity: sendingRequest ? 0.6 : 1, cursor: sendingRequest ? 'not-allowed' : 'pointer' }} onClick={handleAddFriend} disabled={sendingRequest}>
+                  {sendingRequest ? 'Sending…' : 'Add friend'}
+                </button>
               )}
               {friendStatus === 'pending' && (
                 <button style={{ ...styles.friendBtn, background: '#E0DDD5', color: '#7A7A72' }} onClick={handleCancelRequest}>
