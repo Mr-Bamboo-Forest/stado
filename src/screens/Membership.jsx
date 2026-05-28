@@ -4,6 +4,7 @@ import { db } from '../firebase'
 import { 
   MEMBERSHIP_TIERS, 
   getUserTier, 
+  getEffectiveTier,
   isMembershipActive, 
   getDaysRemaining,
   getMembershipStatusText,
@@ -19,7 +20,8 @@ export default function Membership({ onBack, userData, currentUser, onUpdateUser
   const [error, setError] = useState('')
   const [stripeLoaded, setStripeLoaded] = useState(false)
 
-  const currentTier = getUserTier(userData)
+  const currentTier = getEffectiveTier(userData)
+  const rawTier = getUserTier(userData)
   const isActive = isMembershipActive(userData)
   const daysRemaining = getDaysRemaining(userData)
   const postStatus = canPostGame(userData)
@@ -104,6 +106,22 @@ export default function Membership({ onBack, userData, currentUser, onUpdateUser
     }
   }
 
+  const handleCancel = async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const result = await cancelMembership(currentUser.uid)
+      if (result?.success) {
+        setError(result.message || 'Membership cancellation requested. Your premium access will remain until the end of the billing period.')
+      }
+    } catch (err) {
+      console.error('Cancel membership error:', err)
+      setError(err.message || 'Unable to cancel membership right now. Please try again later.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleManageBilling = async () => {
     try {
       await openBillingPortal(currentUser.uid)
@@ -138,7 +156,7 @@ export default function Membership({ onBack, userData, currentUser, onUpdateUser
             <p style={styles.statusSubtext}>
               {getMembershipStatusText(userData)}
             </p>
-            {isActive && currentTier.id !== 'free' && daysRemaining > 0 && (
+            {isActive && rawTier.id !== 'free' && currentTier.id !== 'free' && daysRemaining > 0 && (
               <div style={styles.renewalInfo}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1D9E75" strokeWidth="2">
                   <circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" />
@@ -226,7 +244,7 @@ export default function Membership({ onBack, userData, currentUser, onUpdateUser
                       Your current plan
                     </button>
                   ) : tier.id === 'free' ? (
-                    <button style={styles.buttonSecondary} onClick={() => handleCancel()}>
+                    <button style={styles.buttonSecondary} onClick={handleCancel}>
                       Downgrade to free
                     </button>
                   ) : (

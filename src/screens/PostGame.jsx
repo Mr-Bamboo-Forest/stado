@@ -4,7 +4,7 @@ import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-lea
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { db } from '../firebase'
-import { canPostGame } from '../membershipUtils'
+import { canPostGame, hasFeature } from '../membershipUtils'
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -51,6 +51,7 @@ export default function PostGame({ onBack, currentUser, userData, onShowMembersh
 
   const postStatus = canPostGame(userData)
   const canPost = postStatus.canPost
+  const canUseRecurring = hasFeature(userData, 'recurringGames')
 
   useEffect(() => {
     if (mapPosition) {
@@ -83,6 +84,11 @@ export default function PostGame({ onBack, currentUser, userData, onShowMembersh
     // Check if can post
     if (!canPost) {
       setShowLimitModal(true)
+      return
+    }
+
+    if (form.isRecurring && !canUseRecurring) {
+      setPostError('Recurring games are available for Regular members only. Upgrade your membership to schedule recurring sessions.')
       return
     }
 
@@ -307,20 +313,23 @@ export default function PostGame({ onBack, currentUser, userData, onShowMembersh
           </div>
 
           {/* Recurring (Premium) */}
-          {false && (
-            <div style={styles.field}>
-              <label style={styles.checkboxLabel}>
-                <input
-                  type="checkbox"
-                  checked={form.isRecurring}
-                  onChange={(e) => handleChange('isRecurring', e.target.checked)}
-                  disabled={submitting}
-                  style={styles.checkbox}
-                />
-                Schedule recurring game (Premium)
-              </label>
-            </div>
-          )}
+          <div style={styles.field}>
+            <label style={styles.checkboxLabel}>
+              <input
+                type="checkbox"
+                checked={form.isRecurring}
+                onChange={(e) => handleChange('isRecurring', e.target.checked)}
+                disabled={submitting || !canUseRecurring}
+                style={styles.checkbox}
+              />
+              Schedule recurring game
+            </label>
+            {!canUseRecurring && (
+              <p style={styles.fieldHint}>
+                Premium feature available only for Regular members. Upgrade to enable recurring games.
+              </p>
+            )}
+          </div>
 
           {/* Note */}
           <div style={styles.field}>
