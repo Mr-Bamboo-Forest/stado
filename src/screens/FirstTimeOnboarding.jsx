@@ -1,18 +1,22 @@
 import { useState } from 'react'
 
+import slide1 from '../../public/slide1.png'
+import slide2 from '../../public/slide2.png'
+import slide3 from '../../public/slide3.png'
+
 const SLIDES = [
   {
-    photo: '../../public/slide1.png',
+    photo: slide1,
     title: 'Find your game',
     subtitle: 'Discover pickup football games happening near you right now',
   },
   {
-    photo: '../../public/slide2.png',
+    photo: slide2,
     title: 'Show up and play',
     subtitle: 'No coordination chaos. Just open, find, and go kick.',
   },
   {
-    photo: '../../public/slide3.png',
+    photo: slide3,
     title: 'Build your squad',
     subtitle: 'Meet other ballers and turn strangers into regular teammates',
   },
