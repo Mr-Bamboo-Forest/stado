@@ -13,8 +13,16 @@ export default function GameDetail({ game, onBack, currentUser, userData, onJoin
 
   const isHost = currentUser?.uid === game.hostUid
   const gameDateTime = game.date && game.time ? new Date(`${game.date}T${game.time}`) : null
-  const gameHasPassed = gameDateTime ? new Date() > gameDateTime : false
   const isCompleted = game.status === 'completed'
+
+  // Show attendance button if today is the game day OR the game has already passed
+  const isAttendanceDay = (() => {
+    if (!game.date) return false
+    const today = new Date()
+    const gameDay = new Date(game.date + 'T00:00:00')
+    // Same calendar day, or any time after the game day
+    return today >= gameDay
+  })()
 
   useEffect(() => {
     if (game.players && currentUser?.uid) {
@@ -100,6 +108,9 @@ export default function GameDetail({ game, onBack, currentUser, userData, onJoin
     setAttendance(prev => ({ ...prev, [uid]: status }))
   }
 
+  const markedCount = Object.keys(attendance).length
+  const totalPlayers = game.players?.length || 0
+
   const handleCompleteGame = async () => {
     setSavingAttendance(true)
     try {
@@ -108,8 +119,10 @@ export default function GameDetail({ game, onBack, currentUser, userData, onJoin
         if (!uid) continue
         const status = attendance[uid]
         if (status === 'showed') {
+          // Increment attended count for this player
           await updateDoc(doc(db, 'users', uid), { gamesAttended: increment(1) })
         } else if (status === 'noshow') {
+          // Fetch current data so we can compute an accurate rate
           const userSnap = await getDoc(doc(db, 'users', uid))
           if (userSnap.exists()) {
             const d = userSnap.data()
@@ -121,12 +134,16 @@ export default function GameDetail({ game, onBack, currentUser, userData, onJoin
             })
           }
         }
+        // Players with no status marked are left unchanged
       }
+
+      // Archive the game with the attendance record
       const gameData = { ...game, status: 'completed', completedAt: new Date(), attendanceRecord: attendance }
       delete gameData.id
       await addDoc(collection(db, 'archivedGames'), gameData)
       await deleteDoc(doc(db, 'games', game.id))
-      alert('Game completed! Stats updated.')
+
+      alert('Game completed! Player stats have been updated.')
       onBack()
     } catch (err) {
       console.error('Error completing game:', err)
@@ -151,6 +168,7 @@ export default function GameDetail({ game, onBack, currentUser, userData, onJoin
     return `${dayNames[date.getDay()]} ${date.getDate()} ${monthNames[date.getMonth()]} · ${timeFormatted}`
   }
 
+  // ── Attendance screen ──────────────────────────────────────────────────────
   if (showAttendance) {
     return (
       <div style={styles.screen}>
@@ -161,33 +179,84 @@ export default function GameDetail({ game, onBack, currentUser, userData, onJoin
           <span style={styles.headerTitle}>Mark Attendance</span>
           <div style={styles.headerSpacer} />
         </header>
+
         <div style={styles.content}>
-          <p style={{ fontSize: '14px', color: '#7A7A72', marginBottom: '8px' }}>Mark who showed up. Leave blank if unsure.</p>
+          {/* Progress indicator */}
+          <div style={styles.attendanceProgress}>
+            <p style={styles.attendanceProgressText}>
+              {markedCount} of {totalPlayers} player{totalPlayers !== 1 ? 's' : ''} marked
+            </p>
+            <div style={styles.progressBarTrack}>
+              <div style={{ ...styles.progressBarFill, width: totalPlayers > 0 ? `${(markedCount / totalPlayers) * 100}%` : '0%' }} />
+            </div>
+          </div>
+
+          <p style={styles.attendanceHint}>Tap showed or no-show for each player. Leave unmarked if unsure.</p>
+
           {(game.players || []).map((player, i) => {
             const playerObj = typeof player === 'string' ? { uid: player, name: player } : player
-            const displayName = playerObj.uid === currentUser?.uid ? 'You' : playerObj.name || `Player ${i + 1}`
+            const isCurrentUser = playerObj.uid === currentUser?.uid
+            const displayName = isCurrentUser ? `${playerObj.name || 'You'} (you)` : playerObj.name || `Player ${i + 1}`
+            const initial = displayName.charAt(0)?.toUpperCase() || '?'
             const status = attendance[playerObj.uid]
             return (
-              <div key={i} style={styles.attendanceRow}>
+              <div key={playerObj.uid || i} style={styles.attendanceRow}>
                 <div style={styles.attendancePlayer}>
-                  <div style={styles.playerAvatar}>{displayName[0]?.toUpperCase()}</div>
-                  <span style={styles.playerName}>{displayName}</span>
+                  {playerObj.photoURL
+                    ? <img src={playerObj.photoURL} alt={displayName} style={styles.attendanceAvatarImg} />
+                    : <div style={styles.playerAvatar}>{initial}</div>
+                  }
+                  <div>
+                    <span style={styles.playerName}>{displayName}</span>
+                    {playerObj.uid === game.hostUid && (
+                      <span style={styles.hostTag}> · Host</span>
+                    )}
+                  </div>
                 </div>
                 <div style={styles.attendanceBtns}>
-                  <button style={{ ...styles.attendanceBtn, ...styles.showedBtn, opacity: status === 'showed' ? 1 : 0.4 }} onClick={() => handleMarkAttendance(playerObj.uid, status === 'showed' ? null : 'showed')}>✓ Showed</button>
-                  <button style={{ ...styles.attendanceBtn, ...styles.noshowBtn, opacity: status === 'noshow' ? 1 : 0.4 }} onClick={() => handleMarkAttendance(playerObj.uid, status === 'noshow' ? null : 'noshow')}>✗ No show</button>
+                  <button
+                    style={{ ...styles.attendanceBtn, ...styles.showedBtn, opacity: status === 'showed' ? 1 : 0.35, transform: status === 'showed' ? 'scale(1.05)' : 'scale(1)' }}
+                    onClick={() => handleMarkAttendance(playerObj.uid, status === 'showed' ? null : 'showed')}
+                  >✓ Showed</button>
+                  <button
+                    style={{ ...styles.attendanceBtn, ...styles.noshowBtn, opacity: status === 'noshow' ? 1 : 0.35, transform: status === 'noshow' ? 'scale(1.05)' : 'scale(1)' }}
+                    onClick={() => handleMarkAttendance(playerObj.uid, status === 'noshow' ? null : 'noshow')}
+                  >✗ No-show</button>
                 </div>
               </div>
             )
           })}
-          <button style={{ ...styles.joinBtn, marginTop: '24px', opacity: savingAttendance ? 0.7 : 1 }} onClick={handleCompleteGame} disabled={savingAttendance}>
-            {savingAttendance ? 'Saving...' : 'Complete game'}
+
+          {/* Summary before completing */}
+          {markedCount > 0 && (
+            <div style={styles.attendanceSummary}>
+              <span style={styles.summaryShowed}>
+                ✓ {Object.values(attendance).filter(s => s === 'showed').length} showed
+              </span>
+              <span style={styles.summaryNoShow}>
+                ✗ {Object.values(attendance).filter(s => s === 'noshow').length} no-show
+              </span>
+              {totalPlayers - markedCount > 0 && (
+                <span style={styles.summaryUnmarked}>
+                  — {totalPlayers - markedCount} unmarked
+                </span>
+              )}
+            </div>
+          )}
+
+          <button
+            style={{ ...styles.completeBtn, opacity: savingAttendance ? 0.7 : 1 }}
+            onClick={handleCompleteGame}
+            disabled={savingAttendance}
+          >
+            {savingAttendance ? 'Saving...' : 'Complete game & save stats'}
           </button>
         </div>
       </div>
     )
   }
 
+  // ── Main game detail view ──────────────────────────────────────────────────
   return (
     <div style={styles.screen}>
       {showNoShowWarning && (
@@ -290,8 +359,11 @@ export default function GameDetail({ game, onBack, currentUser, userData, onJoin
           </div>
         )}
 
-        {isHost && gameHasPassed && !isCompleted && (
-          <button style={styles.attendanceButton} onClick={() => setShowAttendance(true)}>Mark attendance</button>
+        {/* Attendance button — visible to host on game day or after */}
+        {isHost && isAttendanceDay && !isCompleted && (
+          <button style={styles.attendanceButton} onClick={() => setShowAttendance(true)}>
+            📋 Mark attendance
+          </button>
         )}
 
         {!joined && !isCompleted ? (
@@ -356,12 +428,25 @@ const styles = {
   joinedState: { background: '#E1F5EE', borderRadius: '12px', padding: '16px', textAlign: 'center' },
   joinedText: { fontSize: '14px', fontWeight: '600', color: '#085041', marginBottom: '12px' },
   addressBtn: { display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '10px 16px', background: '#085041', color: 'white', fontSize: '13px', fontWeight: '600', borderRadius: '8px', border: 'none', cursor: 'pointer' },
-  attendanceRow: { background: 'white', borderRadius: '12px', padding: '12px 16px', border: '1px solid #E0DDD5', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '8px' },
-  attendancePlayer: { display: 'flex', alignItems: 'center', gap: '10px' },
-  attendanceBtns: { display: 'flex', gap: '8px' },
-  attendanceBtn: { padding: '6px 10px', borderRadius: '8px', border: 'none', fontSize: '12px', fontWeight: '600', cursor: 'pointer' },
+  // Attendance screen styles
+  attendanceProgress: { background: 'white', borderRadius: '12px', padding: '14px 16px', border: '1px solid #E0DDD5' },
+  attendanceProgressText: { fontSize: '13px', fontWeight: '600', color: '#2C2C2A', marginBottom: '8px' },
+  progressBarTrack: { height: '6px', background: '#E0DDD5', borderRadius: '100px', overflow: 'hidden' },
+  progressBarFill: { height: '100%', background: '#1D9E75', borderRadius: '100px', transition: 'width 0.2s ease' },
+  attendanceHint: { fontSize: '13px', color: '#7A7A72', margin: 0 },
+  attendanceRow: { background: 'white', borderRadius: '12px', padding: '12px 16px', border: '1px solid #E0DDD5', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' },
+  attendancePlayer: { display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 },
+  attendanceAvatarImg: { width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0 },
+  hostTag: { fontSize: '12px', color: '#7A7A72', fontWeight: '400' },
+  attendanceBtns: { display: 'flex', gap: '8px', flexShrink: 0 },
+  attendanceBtn: { padding: '7px 10px', borderRadius: '8px', border: 'none', fontSize: '12px', fontWeight: '600', cursor: 'pointer', transition: 'opacity 0.15s, transform 0.15s' },
   showedBtn: { background: '#E1F5EE', color: '#085041' },
   noshowBtn: { background: '#FCEBEB', color: '#A02020' },
+  attendanceSummary: { display: 'flex', gap: '16px', padding: '10px 14px', background: 'white', borderRadius: '10px', border: '1px solid #E0DDD5', fontSize: '13px', fontWeight: '600' },
+  summaryShowed: { color: '#085041' },
+  summaryNoShow: { color: '#A02020' },
+  summaryUnmarked: { color: '#7A7A72', fontWeight: '400' },
+  completeBtn: { width: '100%', padding: '14px 0', background: '#085041', color: 'white', fontSize: '15px', fontWeight: '600', borderRadius: '12px', border: 'none', cursor: 'pointer' },
   overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', zIndex: 1000 },
   modal: { background: 'white', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '320px' },
   modalTitle: { fontSize: '18px', fontWeight: '700', color: '#2C2C2A', marginBottom: '12px', textAlign: 'center' },
