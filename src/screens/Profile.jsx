@@ -41,14 +41,23 @@ export default function Profile({ onBack, userData, onUpdateUser, currentUser, o
   }
 
   const fetchFriends = async () => {
-    if (!userData?.friends?.length) return
     try {
+      // Always fetch the current user's document directly from Firestore so we
+      // get the live friends list — not the potentially-stale userData prop.
+      const userSnap = await getDoc(doc(db, 'users', user.uid))
+      if (!userSnap.exists()) return
+      const latestFriends = userSnap.data().friends || []
+      if (!latestFriends.length) { setFriends([]); return }
       const friendList = []
-      for (const uid of userData.friends) {
+      for (const uid of latestFriends) {
         const snap = await getDoc(doc(db, 'users', uid))
         if (snap.exists()) friendList.push({ uid, ...snap.data() })
       }
       setFriends(friendList)
+      // Keep the parent's userData in sync with the fresh friends list
+      if (onUpdateUser) {
+        onUpdateUser({ ...userData, friends: latestFriends })
+      }
     } catch (e) { console.error(e) }
   }
 
@@ -200,15 +209,15 @@ export default function Profile({ onBack, userData, onUpdateUser, currentUser, o
         <div style={styles.statsRow}>
           <div style={styles.stat}>
             <p style={styles.statValue}>{userData?.gamesAttended || 0}</p>
-            <p style={styles.statLabel}>Games</p>
+            <p style={styles.statLabel}>Games Attended</p>
           </div>
           <div style={styles.stat}>
             <p style={styles.statValue}>{userData?.gamesHosted || 0}</p>
-            <p style={styles.statLabel}>Hosted</p>
+            <p style={styles.statLabel}>Games Hosted</p>
           </div>
           <div style={styles.stat}>
             <p style={{ ...styles.statValue, color: rate > 10 ? '#DC2626' : '#2C2C2A' }}>{rate}%</p>
-            <p style={styles.statLabel}>No-show</p>
+            <p style={styles.statLabel}>No-show Rate</p>
           </div>
         </div>
 

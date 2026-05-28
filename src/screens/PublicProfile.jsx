@@ -167,15 +167,15 @@ export default function PublicProfile({ uid, currentUser, onBack, onRequireAuth 
         <div style={styles.statsRow}>
           <div style={styles.stat}>
             <p style={styles.statValue}>{profile.gamesAttended || 0}</p>
-            <p style={styles.statLabel}>Games</p>
+            <p style={styles.statLabel}>Games Attended</p>
           </div>
           <div style={styles.stat}>
             <p style={styles.statValue}>{profile.gamesHosted || 0}</p>
-            <p style={styles.statLabel}>Hosted</p>
+            <p style={styles.statLabel}>Games Hosted</p>
           </div>
           <div style={styles.stat}>
             <p style={{ ...styles.statValue, color: isHighNoShow ? '#DC2626' : '#2C2C2A' }}>{rate}%</p>
-            <p style={styles.statLabel}>No-show</p>
+            <p style={styles.statLabel}>No-show Rate</p>
           </div>
         </div>
 
