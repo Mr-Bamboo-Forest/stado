@@ -7,6 +7,21 @@
     <meta name="theme-color" content="#085041" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- Primary -->
+    <meta name="description" content="Find pickup football games near you. Show up and play." />
+
+    <!-- Open Graph (Facebook, Instagram, iMessage, WhatsApp) -->
+    <meta property="og:title" content="stado · Find your game" />
+    <meta property="og:description" content="Find pickup football games near you. Show up and play." />
+    <meta property="og:image" content="https://stado.football/icon-512.png" />
+    <meta property="og:url" content="https://stado.football" />
+    <meta property="og:type" content="website" />
+
+    <!-- Twitter/X card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="stado · Find your game" />
+    <meta name="twitter:description" content="Find pickup football games near you. Show up and play." />
+    <meta name="twitter:image" content="https://stado.football/icon-512.png" />
     <title>stado</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -18,6 +33,27 @@
           navigator.serviceWorker.register('/sw.js');
         });
       }
+    </script>
+    <script>
+      (function() {
+        var ua = navigator.userAgent || '';
+        var isInApp = /Instagram|FBAN|FBAV|FB_IAB|TikTok|BytedanceWebview/i.test(ua);
+        if (isInApp) {
+          // Android: intent link opens Chrome directly
+          if (/Android/i.test(ua)) {
+            var intentUrl = 'intent://' + location.host + location.pathname + '#Intent;scheme=https;package=com.android.chrome;end';
+            window.location.href = intentUrl;
+          }
+          // iOS: no reliable force-open exists, but this prompts Safari
+          else if (/iPhone|iPad/i.test(ua)) {
+            window.location.href = location.href.replace(/^https?:\/\//, 'googlechrome://');
+            // Fallback after short delay if Chrome isn't installed
+            setTimeout(function() {
+              window.location.href = location.href;
+            }, 500);
+          }
+        }
+      })();
     </script>
   </head>
   <body>
