@@ -15,8 +15,20 @@ export default function SignIn({ onSuccess }) {
   const [mode, setMode] = useState("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const passwordRules = [
+    { label: "At least 6 characters", test: (p) => p.length >= 6 },
+    { label: "Uppercase letter", test: (p) => /[A-Z]/.test(p) },
+    { label: "Lowercase letter", test: (p) => /[a-z]/.test(p) },
+    { label: "Number", test: (p) => /[0-9]/.test(p) },
+    { label: "Symbol (e.g. !@#$)", test: (p) => /[^A-Za-z0-9]/.test(p) },
+  ];
+
+  const allRulesMet = passwordRules.every((r) => r.test(password));
+  const passwordsMatch = password === confirmPassword;
 
   const handleGoogle = async () => {
     try {
@@ -35,6 +47,19 @@ export default function SignIn({ onSuccess }) {
     e.preventDefault();
     setError("");
     setLoading(true);
+
+    if (mode === "signup") {
+      if (!allRulesMet) {
+        setError("Please meet all password requirements.");
+        setLoading(false);
+        return;
+      }
+      if (!passwordsMatch) {
+        setError("Passwords do not match.");
+        setLoading(false);
+        return;
+      }
+    }
 
     try {
       if (mode === "signup") {
@@ -79,6 +104,7 @@ export default function SignIn({ onSuccess }) {
   const toggleMode = () => {
     setMode(mode === "signin" ? "signup" : "signin");
     setError("");
+    setConfirmPassword("");
   };
 
   return (
@@ -118,21 +144,74 @@ export default function SignIn({ onSuccess }) {
             disabled={loading}
           />
           <input
-            style={{ ...styles.input, ...(error ? styles.inputError : {}) }}
+            style={{ ...styles.input, ...(error && mode === "signup" && !allRulesMet ? styles.inputError : {}) }}
             type="password"
-            placeholder="Password"
+            placeholder={mode === "signup" ? "Create password" : "Password"}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
             disabled={loading}
           />
 
+          {mode === "signup" && (
+            <>
+              <div style={styles.requirementsList}>
+                {passwordRules.map((rule) => {
+                  const met = rule.test(password);
+                  return (
+                    <div key={rule.label} style={styles.requirementRow}>
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke={met ? "#1D9E75" : "#D63D3D"}
+                        strokeWidth="2.5"
+                        style={{ flexShrink: 0, marginTop: "1px" }}
+                      >
+                        {met ? (
+                          <path d="M5 12l5 5L20 7" />
+                        ) : (
+                          <path d="M18 6L6 18M6 6l12 12" />
+                        )}
+                      </svg>
+                      <span style={{ ...styles.requirementText, color: met ? "#1D9E75" : "#D63D3D" }}>
+                        {rule.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <input
+                style={{
+                  ...styles.input,
+                  ...(confirmPassword && !passwordsMatch ? styles.inputError : {}),
+                  ...(confirmPassword && passwordsMatch ? styles.inputSuccess : {}),
+                }}
+                type="password"
+                placeholder="Confirm password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                disabled={loading}
+              />
+              {confirmPassword && !passwordsMatch && (
+                <p style={{ ...styles.error, marginTop: "-4px" }}>Passwords do not match.</p>
+              )}
+            </>
+          )}
+
           {error && <p style={styles.error}>{error}</p>}
 
           <button
             type="submit"
-            style={{ ...styles.btn, ...styles.btnPrimary, opacity: loading ? 0.7 : 1 }}
-            disabled={loading}
+            style={{
+              ...styles.btn,
+              ...styles.btnPrimary,
+              opacity: loading || (mode === "signup" && (!allRulesMet || !passwordsMatch)) ? 0.5 : 1,
+            }}
+            disabled={loading || (mode === "signup" && (!allRulesMet || !passwordsMatch))}
           >
             {mode === "signup" ? "Create account" : "Sign in"}
           </button>
@@ -252,6 +331,28 @@ const styles = {
   },
   inputError: {
     borderColor: "#D63D3D",
+  },
+  inputSuccess: {
+    borderColor: "#1D9E75",
+  },
+  requirementsList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+    padding: "10px 12px",
+    background: "white",
+    borderRadius: "12px",
+    border: "1.5px solid #E0DDD5",
+  },
+  requirementRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: "8px",
+  },
+  requirementText: {
+    fontSize: "13px",
+    fontWeight: "500",
+    lineHeight: "1.4",
   },
   error: {
     fontSize: "13px",
