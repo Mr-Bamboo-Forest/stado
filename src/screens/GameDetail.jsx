@@ -123,7 +123,11 @@ export default function GameDetail({ game, onBack, currentUser, userData, onJoin
   }
 
   const markedCount = Object.keys(attendance).length
-  const totalPlayers = game.players?.length || 0
+  const nonHostPlayers = (game.players || []).filter(p => {
+    const uid = typeof p === 'string' ? p : p?.uid
+    return uid !== game.hostUid
+  })
+  const totalPlayers = nonHostPlayers.length
 
   const handleCompleteGame = async () => {
     setSavingAttendance(true)
@@ -211,7 +215,7 @@ export default function GameDetail({ game, onBack, currentUser, userData, onJoin
 
           <p style={styles.attendanceHint}>Tap showed or no-show for each player. Leave unmarked if unsure.</p>
 
-          {(game.players || []).map((player, i) => {
+          {nonHostPlayers.map((player, i) => {
             const playerObj = typeof player === 'string' ? { uid: player, name: player } : player
             const isCurrentUser = playerObj.uid === currentUser?.uid
             const displayName = isCurrentUser ? `${playerObj.name || 'You'} (you)` : playerObj.name || `Player ${i + 1}`
