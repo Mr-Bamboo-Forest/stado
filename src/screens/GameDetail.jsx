@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { doc, updateDoc, increment, getDoc, addDoc, collection, deleteDoc, serverTimestamp } from 'firebase/firestore'
+import { doc, updateDoc, increment, getDoc, addDoc, collection, deleteDoc, serverTimestamp, runTransaction } from 'firebase/firestore'
 import { db } from '../firebase'
 
 export default function GameDetail({ game, onBack, currentUser, userData, onJoined, onRequireAuth, onViewProfile }) {
@@ -81,20 +81,34 @@ export default function GameDetail({ game, onBack, currentUser, userData, onJoin
     try {
       const playerName = userData?.name || currentUser?.displayName || 'Player'
       const playerPhoto = userData?.photoURL || currentUser?.photoURL || null
-      await updateDoc(doc(db, 'games', game.id), {
-        spotsRemaining: increment(-1),
-        players: [...(game.players || []), {
-          uid: currentUser.uid,
-          name: playerName,
-          photoURL: playerPhoto,
-          noShowRate: getNoShowRate(userData),
-        }],
+      const gameRef = doc(db, 'games', game.id)
+
+      await runTransaction(db, async (transaction) => {
+        const gameSnap = await transaction.get(gameRef)
+        if (!gameSnap.exists()) throw new Error('Game not found')
+        const currentSpots = gameSnap.data().spotsRemaining ?? 0
+        if (currentSpots <= 0) throw new Error('No spots remaining')
+        const currentPlayers = gameSnap.data().players || []
+        transaction.update(gameRef, {
+          spotsRemaining: increment(-1),
+          players: [...currentPlayers, {
+            uid: currentUser.uid,
+            name: playerName,
+            photoURL: playerPhoto,
+            noShowRate: getNoShowRate(userData),
+          }],
+        })
       })
+
       setJoined(true)
       onJoined()
     } catch (err) {
-      console.error('Error joining game:', err)
-      alert('Failed to join game. Please try again.')
+      if (err.message === 'No spots remaining') {
+        alert('Sorry, this game just filled up!')
+      } else {
+        console.error('Error joining game:', err)
+        alert('Failed to join game. Please try again.')
+      }
     } finally {
       setLoading(false)
     }

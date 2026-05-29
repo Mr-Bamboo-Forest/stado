@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { collection, onSnapshot, query, orderBy, where, getDocs, doc, deleteDoc } from 'firebase/firestore'
-import { getAuth } from 'firebase/auth'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { db } from '../firebase'
+import { db, auth } from '../firebase'
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -68,6 +67,7 @@ function formatDistance(km) {
 
 function formatDate(dateStr, timeStr) {
   if (!dateStr) return ''
+  const now = new Date()
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const tomorrow = new Date(today)
@@ -90,7 +90,10 @@ function formatDate(dateStr, timeStr) {
     : ''
 
   if (isToday) {
-    return `Tonight · ${timeFormatted}`
+    // Use "Tonight" only for games at 5pm or later; otherwise use "Today"
+    const hour = timeStr ? parseInt(timeStr.split(':')[0], 10) : 12
+    const label = hour >= 17 ? 'Tonight' : 'Today'
+    return `${label} · ${timeFormatted}`
   } else if (isTomorrow) {
     return `Tomorrow · ${timeFormatted}`
   } else {
@@ -117,7 +120,6 @@ export default function Discover({ onGameClick, userData, onJoinWithCode, onProf
   const prevGameIdsRef = useRef([])
   const initialLoadRef = useRef(true)
   const nearbyAlertTimerRef = useRef(null)
-  const auth = getAuth()
 
   useEffect(() => {
     const q = query(collection(db, 'games'), orderBy('createdAt', 'desc'))

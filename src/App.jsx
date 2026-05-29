@@ -124,7 +124,7 @@ export default function App() {
   }
 
   const handleSignInSuccess = () => setShowAuthPrompt(false)
-  const handleOnboardingComplete = () => {}
+  const handleOnboardingComplete = () => setScreen('discover')
   const handleGamePosted = () => { setScreen('discover') }
   const handleGameJoined = () => {}
 
@@ -165,7 +165,12 @@ export default function App() {
   const handleShowTerms = () => { setScreen('terms') }
 
   const showNav = screen !== 'detail' && screen !== 'publicProfile' && screen !== 'membership' && screen !== 'privacy' && screen !== 'terms'
-  const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 769
+  const [isDesktop, setIsDesktop] = useState(typeof window !== 'undefined' && window.innerWidth >= 769)
+  useEffect(() => {
+    const handleResize = () => setIsDesktop(window.innerWidth >= 769)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
   const isCombinedLoading = checkingOnboarding || authLoading || (user && userDataLoading)
 
   if (isCombinedLoading) {

@@ -5,7 +5,7 @@ import { db } from '../firebase'
 import { getUserTier, getEffectiveTier, isMembershipActive, getDaysRemaining } from '../membershipUtils'
 import MembershipBadge from '../components/membershipBadge'
 
-export default function Profile({ onBack, userData, onUpdateUser, currentUser, onViewProfile, onShowMembership, onShowPrivacy, onShowTerms }) {
+export default function Profile({ onBack, userData, onUpdateUser = () => {}, currentUser, onViewProfile, onShowMembership, onShowPrivacy, onShowTerms }) {
   const auth = getAuth()
   const user = auth.currentUser
   const [friendRequests, setFriendRequests] = useState([])
