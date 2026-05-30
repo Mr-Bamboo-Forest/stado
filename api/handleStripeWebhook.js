@@ -40,9 +40,9 @@ export default async function handler(req, res) {
     const rawBody = await getRawBody(req);
     event = stripe.webhooks.constructEvent(rawBody, sig, endpointSecret);
   } catch (err) {
-      console.error('Webhook signature verification failed:', err.message)
-      return res.status(400).send('Webhook Error: Invalid signature')
-}
+    console.error('Webhook signature verification failed:', err.message);
+    return res.status(400).send('Webhook Error: Invalid signature');
+  }
 
   try {
     switch (event.type) {
@@ -63,6 +63,7 @@ export default async function handler(req, res) {
         break;
 
       case 'invoice.paid':
+      case 'invoice.payment_succeeded':
         await handlePaymentSucceeded(event.data.object);
         break;
 
@@ -85,9 +86,42 @@ export default async function handler(req, res) {
   }
 }
 
+/**
+ * checkout.session.completed fires immediately when the user finishes the
+ * Stripe checkout flow. We write the tier here so the user sees their new
+ * plan the moment they land back on the app, without waiting for the
+ * subscription.created event.
+ */
 async function handleCheckoutCompleted(session) {
   if (session.mode !== 'subscription') return;
-  console.log(`Checkout completed for customer ${session.customer}, session ${session.id}`);
+
+  const customerId = session.customer;
+  const tierId = session.metadata?.tierId;
+  const userId = session.metadata?.firebaseUid;
+
+  if (!userId || !tierId) {
+    console.error('checkout.session.completed: missing metadata', { userId, tierId });
+    return;
+  }
+
+  // Retrieve the subscription to get the period end date
+  const subscription = await stripe.subscriptions.retrieve(session.subscription);
+  const expiresAt = new Date(subscription.current_period_end * 1000);
+
+  await admin.firestore().collection('users').doc(userId).update({
+    'membership.tier': tierId,
+    'membership.stripeSubscriptionId': subscription.id,
+    'membership.stripeCustomerId': customerId,
+    'membership.expiresAt': expiresAt,
+    'membership.status': 'active',
+    'membership.currentPeriodStart': new Date(subscription.current_period_start * 1000),
+    'membership.currentPeriodEnd': expiresAt,
+    'membership.billingInterval': session.metadata?.billingInterval || 'monthly',
+    monthlyPostsUsed: 0,
+    lastPostsResetDate: new Date(),
+  });
+
+  console.log(`Checkout completed: user ${userId} upgraded to ${tierId}`);
 }
 
 async function handleSubscriptionCreated(subscription) {
@@ -142,7 +176,7 @@ async function handleSubscriptionUpdated(subscription) {
     'membership.updated': new Date(),
   });
 
-  console.log(`Subscription updated for user ${userId}, new status: ${appStatus}`);
+  console.log(`Subscription updated for user ${userId}, tier: ${tier}, status: ${appStatus}`);
 }
 
 async function handleSubscriptionDeleted(subscription) {
@@ -179,13 +213,20 @@ async function handlePaymentSucceeded(invoice) {
     return;
   }
 
+  // On renewal, extend the expiry date and reset monthly post count
+  const subscription = await stripe.subscriptions.retrieve(invoice.subscription);
+  const expiresAt = new Date(subscription.current_period_end * 1000);
+
   await admin.firestore().collection('users').doc(userId).update({
+    'membership.expiresAt': expiresAt,
+    'membership.currentPeriodEnd': expiresAt,
+    'membership.status': 'active',
+    'membership.lastPaymentDate': new Date(),
     monthlyPostsUsed: 0,
     lastPostsResetDate: new Date(),
-    'membership.lastPaymentDate': new Date(),
   });
 
-  console.log(`Payment succeeded for user ${userId}, monthly posts reset`);
+  console.log(`Payment succeeded for user ${userId}, expiry extended to ${expiresAt}`);
 }
 
 async function handlePaymentFailed(invoice) {
@@ -216,10 +257,24 @@ async function handleTrialEndingWarning(subscription) {
   console.log(`Trial ending soon for user ${userId}`);
 }
 
+/**
+ * Maps a Stripe price ID to an app tier ID.
+ * Covers all six price env vars (3 tiers x 2 intervals).
+ * Falls back to 'free' if the price ID is unrecognised.
+ */
 function getPriceToTier(priceId) {
   const priceMap = {
-    [process.env.STRIPE_PRICE_PRIORITY]: 'priority',
-    [process.env.STRIPE_PRICE_REGULAR]: 'regular',
+    [process.env.STRIPE_PRICE_PLUS_MONTHLY]:  'plus',
+    [process.env.STRIPE_PRICE_PLUS_YEARLY]:   'plus',
+    [process.env.STRIPE_PRICE_MAX_MONTHLY]:   'max',
+    [process.env.STRIPE_PRICE_MAX_YEARLY]:    'max',
+    [process.env.STRIPE_PRICE_ULTRA_MONTHLY]: 'ultra',
+    [process.env.STRIPE_PRICE_ULTRA_YEARLY]:  'ultra',
   };
-  return priceMap[priceId] || 'free';
+  const tier = priceMap[priceId];
+  if (!tier) {
+    console.error(`getPriceToTier: unrecognised price ID ${priceId}`);
+    return 'free';
+  }
+  return tier;
 }
