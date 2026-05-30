@@ -20,58 +20,69 @@ export const MEMBERSHIP_TIERS = {
   FREE: {
     id: 'free',
     name: 'Free',
-    price: 0,
-    monthlyPrice: null,
+    monthlyPrice: 0,
+    yearlyPrice: 0,
     features: {
       joinAnyGame: true,
-      postsPerMonth: 5,
-      basicProfile: true,
+      postsPerMonth: 3,
+      personalProfile: true,
       pushNotifications: true,
-      priorityJoinQueue: false,
       reputationBadge: false,
-      unlimitedPosting: false,
       recurringGames: false,
+      specialPinColour: false,
       priorityListing: false,
-      seeJoinedPlayers: false,
-      noShowProtection: false,
+      luckyDraw: false,
     },
   },
-  PRIORITY: {
-    id: 'priority',
-    name: 'Priority Member',
-    price: 3.99,
-    monthlyPrice: 3.99,
+  PLUS: {
+    id: 'plus',
+    name: 'Plus',
+    monthlyPrice: 9.99,
+    yearlyPrice: 99.99,
     features: {
       joinAnyGame: true,
-      postsPerMonth: 5,
-      basicProfile: true,
+      postsPerMonth: 6,
+      personalProfile: true,
       pushNotifications: true,
-      priorityJoinQueue: true,
-      reputationBadge: true,
-      unlimitedPosting: false,
+      reputationBadge: 'plus',
       recurringGames: false,
+      specialPinColour: false,
       priorityListing: false,
-      seeJoinedPlayers: false,
-      noShowProtection: false,
+      luckyDraw: false,
     },
   },
-  REGULAR: {
-    id: 'regular',
-    name: 'Regular Member',
-    price: 9.99,
-    monthlyPrice: 9.99,
+  MAX: {
+    id: 'max',
+    name: 'Max',
+    monthlyPrice: 24.99,
+    yearlyPrice: 249.99,
+    features: {
+      joinAnyGame: true,
+      postsPerMonth: 10,
+      personalProfile: true,
+      pushNotifications: true,
+      reputationBadge: 'max',
+      recurringGames: false,
+      specialPinColour: false,
+      priorityListing: false,
+      luckyDraw: false,
+    },
+  },
+  ULTRA: {
+    id: 'ultra',
+    name: 'Ultra',
+    monthlyPrice: 29.99,
+    yearlyPrice: 299.99,
     features: {
       joinAnyGame: true,
       postsPerMonth: Infinity,
-      basicProfile: true,
+      personalProfile: true,
       pushNotifications: true,
-      priorityJoinQueue: true,
-      reputationBadge: true,
-      unlimitedPosting: true,
+      reputationBadge: 'ultra',
       recurringGames: true,
+      specialPinColour: true,
       priorityListing: true,
-      seeJoinedPlayers: true,
-      noShowProtection: true,
+      luckyDraw: true,
     },
   },
 }
@@ -164,7 +175,7 @@ export const canPostGame = (userData) => {
     postsRemaining: Math.max(0, postsLimit - postsUsed),
     reason: canPost
       ? null
-      : `You've reached your ${postsLimit} games/month limit. Upgrade to post unlimited games.`,
+      : `You've reached your ${postsLimit} games/month limit. Upgrade to post more games.`,
   }
 }
 
@@ -205,8 +216,9 @@ export const getMembershipStatusText = (userData) => {
  */
 export const getAllTiers = () => [
   MEMBERSHIP_TIERS.FREE,
-  MEMBERSHIP_TIERS.PRIORITY,
-  MEMBERSHIP_TIERS.REGULAR,
+  MEMBERSHIP_TIERS.PLUS,
+  MEMBERSHIP_TIERS.MAX,
+  MEMBERSHIP_TIERS.ULTRA,
 ]
 
 /**
