@@ -1,23 +1,74 @@
 import { useState } from "react";
 import {
-  getAuth,
   signInWithPopup,
   GoogleAuthProvider,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInAnonymously,
+  sendPasswordResetEmail,
 } from "firebase/auth";
-import { auth } from "../firebase";
+import { doc, setDoc, getDoc, deleteDoc } from "firebase/firestore";
+import { auth, db } from "../firebase";
 
 const provider = new GoogleAuthProvider();
 
+// ─── Eye Icon SVG ──────────────────────────────────────────────────────────
+function EyeIcon({ visible }) {
+  return visible ? (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  ) : (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+      <line x1="1" y1="1" x2="23" y2="23" />
+    </svg>
+  );
+}
+
+// ─── Password Input with Eye Toggle ────────────────────────────────────────
+function PasswordInput({ style, errorStyle, successStyle, placeholder, value, onChange, disabled }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div style={styles.passwordWrapper}>
+      <input
+        style={{ ...styles.input, ...(style || {}), paddingRight: "44px" }}
+        type={show ? "text" : "password"}
+        placeholder={placeholder}
+        value={value}
+        onChange={onChange}
+        required
+        disabled={disabled}
+      />
+      <button
+        type="button"
+        style={styles.eyeBtn}
+        onClick={() => setShow((s) => !s)}
+        tabIndex={-1}
+        aria-label={show ? "Hide password" : "Show password"}
+      >
+        <EyeIcon visible={show} />
+      </button>
+    </div>
+  );
+}
+
+// ─── Main Component ─────────────────────────────────────────────────────────
 export default function SignIn({ onSuccess }) {
+  // mode: "signin" | "signup" | "verify" | "forgot" | "forgotSent"
   const [mode, setMode] = useState("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Verification state
+  const [verifyCode, setVerifyCode] = useState("");
+  const [pendingUser, setPendingUser] = useState(null);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   const passwordRules = [
     { label: "At least 6 characters", test: (p) => p.length >= 6 },
@@ -30,6 +81,23 @@ export default function SignIn({ onSuccess }) {
   const allRulesMet = passwordRules.every((r) => r.test(password));
   const passwordsMatch = password === confirmPassword;
 
+  // ── Send 6-digit verification code ────────────────────────────────────────
+  const sendVerificationCode = async (userEmail) => {
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expires = Date.now() + 10 * 60 * 1000; // 10 minutes
+
+    // Store code in Firestore
+    await setDoc(doc(db, "pendingVerifications", userEmail), { code, expires });
+
+    // Send via API
+    await fetch("/api/sendVerificationCode", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: userEmail, code }),
+    });
+  };
+
+  // ── Google Sign-In ─────────────────────────────────────────────────────────
   const handleGoogle = async () => {
     try {
       setLoading(true);
@@ -43,6 +111,7 @@ export default function SignIn({ onSuccess }) {
     }
   };
 
+  // ── Email Sign-In / Sign-Up ────────────────────────────────────────────────
   const handleEmailAuth = async (e) => {
     e.preventDefault();
     setError("");
@@ -63,11 +132,15 @@ export default function SignIn({ onSuccess }) {
 
     try {
       if (mode === "signup") {
-        await createUserWithEmailAndPassword(auth, email, password);
+        // Create account but don't call onSuccess yet — verify email first
+        const cred = await createUserWithEmailAndPassword(auth, email, password);
+        setPendingUser(cred.user);
+        await sendVerificationCode(email);
+        setMode("verify");
       } else {
         await signInWithEmailAndPassword(auth, email, password);
+        onSuccess();
       }
-      onSuccess();
     } catch (err) {
       console.error(err);
       if (err.code === "auth/email-already-in-use") {
@@ -88,6 +161,81 @@ export default function SignIn({ onSuccess }) {
     }
   };
 
+  // ── Verify 6-digit code ────────────────────────────────────────────────────
+  const handleVerifyCode = async (e) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      const ref = doc(db, "pendingVerifications", email);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) {
+        setError("Verification code not found. Please request a new one.");
+        setLoading(false);
+        return;
+      }
+      const { code, expires } = snap.data();
+      if (Date.now() > expires) {
+        setError("Code has expired. Please request a new one.");
+        await deleteDoc(ref);
+        setLoading(false);
+        return;
+      }
+      if (verifyCode.trim() !== code) {
+        setError("Incorrect code. Please try again.");
+        setLoading(false);
+        return;
+      }
+      // Code is correct — clean up and proceed
+      await deleteDoc(ref);
+      onSuccess();
+    } catch (err) {
+      console.error(err);
+      setError("Verification failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Resend code ────────────────────────────────────────────────────────────
+  const handleResend = async () => {
+    if (resendCooldown > 0) return;
+    setError("");
+    try {
+      await sendVerificationCode(email);
+      setResendCooldown(60);
+      const interval = setInterval(() => {
+        setResendCooldown((c) => {
+          if (c <= 1) { clearInterval(interval); return 0; }
+          return c - 1;
+        });
+      }, 1000);
+    } catch (err) {
+      setError("Failed to resend code. Please try again.");
+    }
+  };
+
+  // ── Forgot Password ────────────────────────────────────────────────────────
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, email);
+      setMode("forgotSent");
+    } catch (err) {
+      console.error(err);
+      if (err.code === "auth/user-not-found" || err.code === "auth/invalid-email") {
+        setError("No account found with that email address.");
+      } else {
+        setError("Failed to send reset email. Please try again.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Guest ──────────────────────────────────────────────────────────────────
   const handleGuest = async () => {
     try {
       setLoading(true);
@@ -107,6 +255,142 @@ export default function SignIn({ onSuccess }) {
     setConfirmPassword("");
   };
 
+  // ════════════════════════════════════════════════════════════════════════════
+  // RENDER: Verification screen
+  // ════════════════════════════════════════════════════════════════════════════
+  if (mode === "verify") {
+    return (
+      <div style={styles.screen}>
+        <div style={styles.content}>
+          <span style={styles.wordmark}>stado</span>
+          <div style={styles.verifyIcon}>
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#085041" strokeWidth="1.8">
+              <rect x="2" y="4" width="20" height="16" rx="2" />
+              <path d="M2 7l10 7 10-7" />
+            </svg>
+          </div>
+          <p style={styles.verifyTitle}>Check your email</p>
+          <p style={styles.verifySubtitle}>
+            We sent a 6-digit code to<br />
+            <strong style={{ color: "#2C2C2A" }}>{email}</strong>
+          </p>
+
+          <form onSubmit={handleVerifyCode} style={styles.form}>
+            <input
+              style={{ ...styles.input, textAlign: "center", letterSpacing: "8px", fontSize: "22px", fontWeight: "700" }}
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              placeholder="000000"
+              value={verifyCode}
+              onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              required
+              disabled={loading}
+              autoFocus
+            />
+
+            {error && <p style={styles.error}>{error}</p>}
+
+            <button
+              type="submit"
+              style={{ ...styles.btn, ...styles.btnPrimary, opacity: loading || verifyCode.length < 6 ? 0.5 : 1 }}
+              disabled={loading || verifyCode.length < 6}
+            >
+              {loading ? "Verifying…" : "Verify account"}
+            </button>
+          </form>
+
+          <button style={styles.toggleLink} onClick={handleResend} disabled={resendCooldown > 0}>
+            {resendCooldown > 0 ? (
+              <span style={{ color: "#7A7A72" }}>Resend code in {resendCooldown}s</span>
+            ) : (
+              <>Didn't get it? <span style={styles.linkText}>Resend code</span></>
+            )}
+          </button>
+
+          <button style={styles.guestLink} onClick={() => { setMode("signup"); setVerifyCode(""); setError(""); }}>
+            ← Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // RENDER: Forgot password screen
+  // ════════════════════════════════════════════════════════════════════════════
+  if (mode === "forgot") {
+    return (
+      <div style={styles.screen}>
+        <div style={styles.content}>
+          <span style={styles.wordmark}>stado</span>
+          <p style={styles.verifyTitle}>Reset your password</p>
+          <p style={styles.verifySubtitle}>Enter your email and we'll send you a link to create a new password.</p>
+
+          <form onSubmit={handleForgotPassword} style={styles.form}>
+            <input
+              style={{ ...styles.input, ...(error ? styles.inputError : {}) }}
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              disabled={loading}
+              autoFocus
+            />
+
+            {error && <p style={styles.error}>{error}</p>}
+
+            <button
+              type="submit"
+              style={{ ...styles.btn, ...styles.btnPrimary, opacity: loading ? 0.5 : 1 }}
+              disabled={loading}
+            >
+              {loading ? "Sending…" : "Send reset link"}
+            </button>
+          </form>
+
+          <button style={styles.toggleLink} onClick={() => { setMode("signin"); setError(""); }}>
+            ← <span style={styles.linkText}>Back to sign in</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // RENDER: Forgot password sent confirmation
+  // ════════════════════════════════════════════════════════════════════════════
+  if (mode === "forgotSent") {
+    return (
+      <div style={styles.screen}>
+        <div style={styles.content}>
+          <span style={styles.wordmark}>stado</span>
+          <div style={styles.verifyIcon}>
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#1D9E75" strokeWidth="1.8">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+              <path d="M22 4L12 14.01l-3-3" />
+            </svg>
+          </div>
+          <p style={styles.verifyTitle}>Email sent!</p>
+          <p style={styles.verifySubtitle}>
+            Check <strong style={{ color: "#2C2C2A" }}>{email}</strong> for a link to reset your password.
+          </p>
+
+          <button
+            style={{ ...styles.btn, ...styles.btnPrimary, marginTop: "8px" }}
+            onClick={() => { setMode("signin"); setError(""); }}
+          >
+            Back to sign in
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // RENDER: Sign in / Sign up
+  // ════════════════════════════════════════════════════════════════════════════
   return (
     <div style={styles.screen}>
       <div style={styles.content}>
@@ -143,15 +427,24 @@ export default function SignIn({ onSuccess }) {
             required
             disabled={loading}
           />
-          <input
-            style={{ ...styles.input, ...(error && mode === "signup" && !allRulesMet ? styles.inputError : {}) }}
-            type="password"
+
+          <PasswordInput
+            style={error && mode === "signup" && !allRulesMet ? styles.inputError : {}}
             placeholder={mode === "signup" ? "Create password" : "Password"}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            required
             disabled={loading}
           />
+
+          {mode === "signin" && (
+            <button
+              type="button"
+              style={styles.forgotLink}
+              onClick={() => { setMode("forgot"); setError(""); }}
+            >
+              Forgot password?
+            </button>
+          )}
 
           {mode === "signup" && (
             <>
@@ -183,17 +476,14 @@ export default function SignIn({ onSuccess }) {
                 })}
               </div>
 
-              <input
+              <PasswordInput
                 style={{
-                  ...styles.input,
                   ...(confirmPassword && !passwordsMatch ? styles.inputError : {}),
                   ...(confirmPassword && passwordsMatch ? styles.inputSuccess : {}),
                 }}
-                type="password"
                 placeholder="Confirm password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                required
                 disabled={loading}
               />
               {confirmPassword && !passwordsMatch && (
@@ -335,6 +625,25 @@ const styles = {
   inputSuccess: {
     borderColor: "#1D9E75",
   },
+  passwordWrapper: {
+    position: "relative",
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+  },
+  eyeBtn: {
+    position: "absolute",
+    right: "12px",
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    color: "#7A7A72",
+    padding: "4px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    lineHeight: 1,
+  },
   requirementsList: {
     display: "flex",
     flexDirection: "column",
@@ -369,6 +678,18 @@ const styles = {
     padding: "4px 0",
     marginTop: "4px",
   },
+  forgotLink: {
+    background: "none",
+    border: "none",
+    color: "#1D9E75",
+    fontSize: "13px",
+    fontWeight: "600",
+    cursor: "pointer",
+    padding: "0",
+    textAlign: "right",
+    marginTop: "-4px",
+    width: "100%",
+  },
   linkText: {
     color: "#1D9E75",
     fontWeight: "600",
@@ -385,5 +706,28 @@ const styles = {
     textDecoration: "underline",
     textDecorationColor: "#C9C6BC",
     textUnderlineOffset: "3px",
+  },
+  verifyIcon: {
+    width: "72px",
+    height: "72px",
+    borderRadius: "20px",
+    background: "#E8F5F1",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: "4px",
+  },
+  verifyTitle: {
+    fontSize: "22px",
+    fontWeight: "700",
+    color: "#085041",
+    margin: 0,
+  },
+  verifySubtitle: {
+    fontSize: "14px",
+    color: "#7A7A72",
+    margin: 0,
+    lineHeight: "1.6",
+    maxWidth: "260px",
   },
 };
