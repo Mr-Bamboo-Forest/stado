@@ -32,9 +32,9 @@ function EyeIcon({ visible }) {
 function PasswordInput({ style, errorStyle, successStyle, placeholder, value, onChange, disabled }) {
   const [show, setShow] = useState(false);
   return (
-    <div style={styles.passwordWrapper}>
+    <div style={{ ...styles.passwordWrapper, ...(style || {}) }}>
       <input
-        style={{ ...styles.input, ...(style || {}), paddingRight: "44px" }}
+        style={{ ...styles.input, ...styles.passwordInput }}
         type={show ? "text" : "password"}
         placeholder={placeholder}
         value={value}
@@ -626,22 +626,34 @@ const styles = {
     borderColor: "#1D9E75",
   },
   passwordWrapper: {
-    position: "relative",
     width: "100%",
     display: "flex",
     alignItems: "center",
+    background: "white",
+    border: "1.5px solid #E0DDD5",
+    borderRadius: "12px",
+    overflow: "hidden",
+  },
+  passwordInput: {
+    flex: 1,
+    border: "none",
+    borderRadius: 0,
+    paddingRight: "8px",
+    outline: "none",
+    background: "transparent",
+    minWidth: 0,
   },
   eyeBtn: {
-    position: "absolute",
-    right: "12px",
+    flexShrink: 0,
     background: "none",
     border: "none",
     cursor: "pointer",
     color: "#7A7A72",
-    padding: "4px",
+    padding: "0 12px",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    alignSelf: "stretch",
     lineHeight: 1,
   },
   requirementsList: {
