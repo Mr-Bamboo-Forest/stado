@@ -32,8 +32,8 @@ export default async function handler(req, res) {
   try {
     decodedToken = await admin.auth().verifyIdToken(token);
   } catch (err) {
-    console.error('Token verification failed:', err.message);
-    return res.status(401).json({ success: false, error: 'Invalid authentication token' });
+    console.error('Checkout session creation error:', error);
+    return res.status(500).json({ success: false, error: error.message });  // <-- change this line
   }
 
   try {
