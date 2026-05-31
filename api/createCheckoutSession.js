@@ -8,7 +8,7 @@ if (!admin.apps.length) {
     credential: admin.credential.cert({
       projectId: process.env.FIREBASE_PROJECT_ID,
       clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\n/g, '\n'),
     }),
   });
 }
@@ -16,30 +16,35 @@ if (!admin.apps.length) {
 const VALID_TIERS = ['plus', 'max', 'ultra'];
 const VALID_INTERVALS = ['monthly', 'yearly'];
 
-/**
- * Vercel Serverless API Route: Create Stripe Checkout Session
- *
- * Expects body: { tierId, billingInterval, userId, userEmail }
- * tierId: 'plus' | 'max' | 'ultra'
- * billingInterval: 'monthly' | 'yearly'
- *
- * Required environment variables:
- *   STRIPE_PRICE_PLUS_MONTHLY, STRIPE_PRICE_PLUS_YEARLY
- *   STRIPE_PRICE_MAX_MONTHLY,  STRIPE_PRICE_MAX_YEARLY
- *   STRIPE_PRICE_ULTRA_MONTHLY, STRIPE_PRICE_ULTRA_YEARLY
- *   APP_URL
- */
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ success: false, error: 'Method not allowed' });
   }
 
-  try {
-    const { tierId, billingInterval = 'monthly', userId, userEmail } = req.body;
+  // Verify Firebase auth token — don't trust userId from the body
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
 
-    // Validate inputs
-    if (!userId || !userEmail) {
-      return res.status(401).json({ success: false, error: 'Unauthenticated. Must be logged in.' });
+  const token = authHeader.slice(7);
+  let decodedToken;
+  try {
+    decodedToken = await admin.auth().verifyIdToken(token);
+  } catch (err) {
+    console.error('Token verification failed:', err.message);
+    return res.status(401).json({ success: false, error: 'Invalid authentication token' });
+  }
+
+  try {
+    const { tierId, billingInterval = 'monthly' } = req.body;
+
+    // Use the verified UID from the token, not body
+    const userId = decodedToken.uid;
+    const userEmail = decodedToken.email;
+
+    if (!userEmail) {
+      return res.status(400).json({ success: false, error: 'Account must have a verified email to subscribe.' });
     }
     if (!VALID_TIERS.includes(tierId)) {
       return res.status(400).json({ success: false, error: 'Invalid tier ID.' });
@@ -53,7 +58,6 @@ export default async function handler(req, res) {
     let customerId = userDoc.data()?.membership?.stripeCustomerId;
 
     if (!customerId) {
-      // No customer yet — create one with firebaseUid in metadata
       const customer = await stripe.customers.create({
         email: userEmail,
         metadata: {
@@ -67,8 +71,6 @@ export default async function handler(req, res) {
         'membership.stripeCustomerId': customerId,
       });
     } else {
-      // Customer exists — ensure firebaseUid is set on the Stripe customer.
-      // This self-heals any customer records created before metadata was added.
       const customer = await stripe.customers.retrieve(customerId);
       if (!customer.deleted && !customer.metadata?.firebaseUid) {
         await stripe.customers.update(customerId, {
@@ -77,7 +79,6 @@ export default async function handler(req, res) {
       }
     }
 
-    // Price ID map
     const priceIds = {
       plus:  { monthly: process.env.STRIPE_PRICE_PLUS_MONTHLY,  yearly: process.env.STRIPE_PRICE_PLUS_YEARLY  },
       max:   { monthly: process.env.STRIPE_PRICE_MAX_MONTHLY,   yearly: process.env.STRIPE_PRICE_MAX_YEARLY   },

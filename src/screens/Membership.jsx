@@ -101,14 +101,18 @@ export default function Membership({ onBack, userData, currentUser, onUpdateUser
     setPaymentLoading(true)
     setError('')
     try {
+      // Get a fresh ID token to send as a Bearer token
+      const idToken = await currentUser.getIdToken()
+
       const response = await fetch('/api/createCheckoutSession', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
         body: JSON.stringify({
           tierId: selectedTier,
           billingInterval,
-          userId: currentUser.uid,
-          userEmail: currentUser.email
         })
       })
 
