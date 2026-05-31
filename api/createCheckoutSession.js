@@ -21,7 +21,6 @@ export default async function handler(req, res) {
     return res.status(405).json({ success: false, error: 'Method not allowed' });
   }
 
-  // Verify Firebase auth token — don't trust userId from the body
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
     return res.status(401).json({ success: false, error: 'Unauthorized' });
@@ -32,14 +31,11 @@ export default async function handler(req, res) {
   try {
     decodedToken = await admin.auth().verifyIdToken(token);
   } catch (err) {
-    console.error('Checkout session creation error:', error);
-    return res.status(500).json({ success: false, error: error.message });  // <-- change this line
+    return res.status(401).json({ success: false, error: 'Invalid authentication token: ' + err.message });
   }
 
   try {
     const { tierId, billingInterval = 'monthly' } = req.body;
-
-    // Use the verified UID from the token, not body
     const userId = decodedToken.uid;
     const userEmail = decodedToken.email;
 
@@ -47,36 +43,15 @@ export default async function handler(req, res) {
       return res.status(400).json({ success: false, error: 'Account must have a verified email to subscribe.' });
     }
     if (!VALID_TIERS.includes(tierId)) {
-      return res.status(400).json({ success: false, error: 'Invalid tier ID.' });
+      return res.status(400).json({ success: false, error: 'Invalid tier: ' + tierId });
     }
     if (!VALID_INTERVALS.includes(billingInterval)) {
-      return res.status(400).json({ success: false, error: 'Invalid billing interval.' });
+      return res.status(400).json({ success: false, error: 'Invalid interval: ' + billingInterval });
     }
 
-    // Fetch Firestore user doc
-    const userDoc = await admin.firestore().collection('users').doc(userId).get();
-    let customerId = userDoc.data()?.membership?.stripeCustomerId;
-
-    if (!customerId) {
-      const customer = await stripe.customers.create({
-        email: userEmail,
-        metadata: {
-          firebaseUid: userId,
-          createdAt: new Date().toISOString(),
-        },
-      });
-      customerId = customer.id;
-
-      await admin.firestore().collection('users').doc(userId).update({
-        'membership.stripeCustomerId': customerId,
-      });
-    } else {
-      const customer = await stripe.customers.retrieve(customerId);
-      if (!customer.deleted && !customer.metadata?.firebaseUid) {
-        await stripe.customers.update(customerId, {
-          metadata: { firebaseUid: userId },
-        });
-      }
+    // Check Stripe key is present
+    if (!process.env.STRIPE_SECRET_KEY) {
+      return res.status(500).json({ success: false, error: 'STRIPE_SECRET_KEY env var is missing.' });
     }
 
     const priceIds = {
@@ -87,7 +62,24 @@ export default async function handler(req, res) {
 
     const priceId = priceIds[tierId]?.[billingInterval];
     if (!priceId) {
-      return res.status(500).json({ success: false, error: 'Price ID not configured for this tier and interval.' });
+      return res.status(500).json({
+        success: false,
+        error: `Missing env var: STRIPE_PRICE_${tierId.toUpperCase()}_${billingInterval.toUpperCase()} is not set in Vercel.`
+      });
+    }
+
+    const userDoc = await admin.firestore().collection('users').doc(userId).get();
+    let customerId = userDoc.data()?.membership?.stripeCustomerId;
+
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: userEmail,
+        metadata: { firebaseUid: userId },
+      });
+      customerId = customer.id;
+      await admin.firestore().collection('users').doc(userId).update({
+        'membership.stripeCustomerId': customerId,
+      });
     }
 
     const appUrl = process.env.APP_URL || 'https://stado.football';
@@ -99,18 +91,15 @@ export default async function handler(req, res) {
       mode: 'subscription',
       billing_address_collection: 'auto',
       success_url: `${appUrl}/?payment=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url:  `${appUrl}/?payment=cancelled`,
-      metadata: {
-        firebaseUid: userId,
-        tierId,
-        billingInterval,
-      },
+      cancel_url: `${appUrl}/?payment=cancelled`,
+      metadata: { firebaseUid: userId, tierId, billingInterval },
     });
 
     return res.status(200).json({ sessionId: session.id, success: true });
 
   } catch (error) {
-    console.error('Checkout session creation error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to create checkout session. Please try again.' });
+    console.error('Checkout session error:', error);
+    // Return the real error message so you can see what's failing
+    return res.status(500).json({ success: false, error: error.message });
   }
 }
