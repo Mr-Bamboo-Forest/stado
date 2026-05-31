@@ -14,9 +14,7 @@ if (!admin.apps.length) {
 }
 
 export const config = {
-  api: {
-    bodyParser: false,
-  },
+  api: { bodyParser: false },
 };
 
 async function getRawBody(readable) {
@@ -25,6 +23,16 @@ async function getRawBody(readable) {
     chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
   }
   return Buffer.concat(chunks);
+}
+
+/**
+ * Safely convert a Unix epoch seconds value to a Firestore Timestamp.
+ * Returns null if the value is missing or not a finite number — Firestore
+ * accepts null for optional timestamp fields without throwing.
+ */
+function toTimestamp(epochSeconds) {
+  if (epochSeconds == null || !isFinite(epochSeconds)) return null;
+  return admin.firestore.Timestamp.fromMillis(Math.floor(epochSeconds) * 1000);
 }
 
 export default async function handler(req, res) {
@@ -49,32 +57,25 @@ export default async function handler(req, res) {
       case 'checkout.session.completed':
         await handleCheckoutCompleted(event.data.object);
         break;
-
       case 'customer.subscription.created':
         await handleSubscriptionCreated(event.data.object);
         break;
-
       case 'customer.subscription.updated':
         await handleSubscriptionUpdated(event.data.object);
         break;
-
       case 'customer.subscription.deleted':
         await handleSubscriptionDeleted(event.data.object);
         break;
-
       case 'invoice.paid':
       case 'invoice.payment_succeeded':
         await handlePaymentSucceeded(event.data.object);
         break;
-
       case 'invoice.payment_failed':
         await handlePaymentFailed(event.data.object);
         break;
-
       case 'customer.subscription.trial_will_end':
         await handleTrialEndingWarning(event.data.object);
         break;
-
       default:
         console.log(`Unhandled event type ${event.type}`);
     }
@@ -86,12 +87,6 @@ export default async function handler(req, res) {
   }
 }
 
-/**
- * checkout.session.completed fires immediately when the user finishes the
- * Stripe checkout flow. We write the tier here so the user sees their new
- * plan the moment they land back on the app, without waiting for the
- * subscription.created event.
- */
 async function handleCheckoutCompleted(session) {
   if (session.mode !== 'subscription') return;
 
@@ -104,88 +99,81 @@ async function handleCheckoutCompleted(session) {
     return;
   }
 
-  // Retrieve the subscription to get the period end date
   const subscription = await stripe.subscriptions.retrieve(session.subscription);
-  const expiresAt = new Date(subscription.current_period_end * 1000);
 
   await admin.firestore().collection('users').doc(userId).update({
     'membership.tier': tierId,
     'membership.stripeSubscriptionId': subscription.id,
     'membership.stripeCustomerId': customerId,
-    'membership.expiresAt': expiresAt,
+    'membership.expiresAt': toTimestamp(subscription.current_period_end),
     'membership.status': 'active',
-    'membership.currentPeriodStart': new Date(subscription.current_period_start * 1000),
-    'membership.currentPeriodEnd': expiresAt,
+    'membership.currentPeriodStart': toTimestamp(subscription.current_period_start),
+    'membership.currentPeriodEnd': toTimestamp(subscription.current_period_end),
     'membership.billingInterval': session.metadata?.billingInterval || 'monthly',
     monthlyPostsUsed: 0,
-    lastPostsResetDate: new Date(),
+    lastPostsResetDate: admin.firestore.FieldValue.serverTimestamp(),
   });
 
   console.log(`Checkout completed: user ${userId} upgraded to ${tierId}`);
 }
 
 async function handleSubscriptionCreated(subscription) {
-  const customerId = subscription.customer;
-  const customer = await stripe.customers.retrieve(customerId);
+  const customer = await stripe.customers.retrieve(subscription.customer);
   const userId = customer.metadata?.firebaseUid;
 
   if (!userId) {
-    console.error('No Firebase UID found for customer:', customerId);
+    console.error('No Firebase UID found for customer:', subscription.customer);
     return;
   }
 
-  const tier = getPriceToTier(subscription.items.data[0].price.id);
-  const expiresAt = new Date(subscription.current_period_end * 1000);
+  const tier = getPriceToTier(subscription.items.data[0]?.price?.id);
 
   await admin.firestore().collection('users').doc(userId).update({
     'membership.tier': tier,
     'membership.stripeSubscriptionId': subscription.id,
-    'membership.stripeCustomerId': customerId,
-    'membership.expiresAt': expiresAt,
+    'membership.stripeCustomerId': subscription.customer,
+    'membership.expiresAt': toTimestamp(subscription.current_period_end),
     'membership.status': 'active',
-    'membership.currentPeriodStart': new Date(subscription.current_period_start * 1000),
-    'membership.currentPeriodEnd': expiresAt,
+    'membership.currentPeriodStart': toTimestamp(subscription.current_period_start),
+    'membership.currentPeriodEnd': toTimestamp(subscription.current_period_end),
     monthlyPostsUsed: 0,
-    lastPostsResetDate: new Date(),
+    lastPostsResetDate: admin.firestore.FieldValue.serverTimestamp(),
   });
 
   console.log(`Subscription created for user ${userId}, tier: ${tier}`);
 }
 
 async function handleSubscriptionUpdated(subscription) {
-  const customerId = subscription.customer;
-  const customer = await stripe.customers.retrieve(customerId);
+  const customer = await stripe.customers.retrieve(subscription.customer);
   const userId = customer.metadata?.firebaseUid;
 
   if (!userId) {
-    console.error('No Firebase UID found for customer:', customerId);
+    console.error('No Firebase UID found for customer:', subscription.customer);
     return;
   }
 
-  const tier = getPriceToTier(subscription.items.data[0].price.id);
-  const expiresAt = new Date(subscription.current_period_end * 1000);
+  const tier = getPriceToTier(subscription.items.data[0]?.price?.id);
   const appStatus = subscription.status === 'active' ? 'active' : 'inactive';
 
   await admin.firestore().collection('users').doc(userId).update({
     'membership.tier': tier,
     'membership.stripeSubscriptionId': subscription.id,
-    'membership.expiresAt': expiresAt,
+    'membership.expiresAt': toTimestamp(subscription.current_period_end),
     'membership.status': appStatus,
-    'membership.currentPeriodStart': new Date(subscription.current_period_start * 1000),
-    'membership.currentPeriodEnd': expiresAt,
-    'membership.updated': new Date(),
+    'membership.currentPeriodStart': toTimestamp(subscription.current_period_start),
+    'membership.currentPeriodEnd': toTimestamp(subscription.current_period_end),
+    'membership.updated': admin.firestore.FieldValue.serverTimestamp(),
   });
 
   console.log(`Subscription updated for user ${userId}, tier: ${tier}, status: ${appStatus}`);
 }
 
 async function handleSubscriptionDeleted(subscription) {
-  const customerId = subscription.customer;
-  const customer = await stripe.customers.retrieve(customerId);
+  const customer = await stripe.customers.retrieve(subscription.customer);
   const userId = customer.metadata?.firebaseUid;
 
   if (!userId) {
-    console.error('No Firebase UID found for customer:', customerId);
+    console.error('No Firebase UID found for customer:', subscription.customer);
     return;
   }
 
@@ -194,7 +182,7 @@ async function handleSubscriptionDeleted(subscription) {
     'membership.status': 'cancelled',
     'membership.expiresAt': null,
     'membership.stripeSubscriptionId': null,
-    'membership.cancelledAt': new Date(),
+    'membership.cancelledAt': admin.firestore.FieldValue.serverTimestamp(),
     'membership.lastSubscriptionId': subscription.id,
   });
 
@@ -204,44 +192,40 @@ async function handleSubscriptionDeleted(subscription) {
 async function handlePaymentSucceeded(invoice) {
   if (!invoice.subscription) return;
 
-  const customerId = invoice.customer;
-  const customer = await stripe.customers.retrieve(customerId);
+  const customer = await stripe.customers.retrieve(invoice.customer);
   const userId = customer.metadata?.firebaseUid;
 
   if (!userId) {
-    console.error('No Firebase UID found for customer:', customerId);
+    console.error('No Firebase UID found for customer:', invoice.customer);
     return;
   }
 
-  // On renewal, extend the expiry date and reset monthly post count
   const subscription = await stripe.subscriptions.retrieve(invoice.subscription);
-  const expiresAt = new Date(subscription.current_period_end * 1000);
 
   await admin.firestore().collection('users').doc(userId).update({
-    'membership.expiresAt': expiresAt,
-    'membership.currentPeriodEnd': expiresAt,
+    'membership.expiresAt': toTimestamp(subscription.current_period_end),
+    'membership.currentPeriodEnd': toTimestamp(subscription.current_period_end),
     'membership.status': 'active',
-    'membership.lastPaymentDate': new Date(),
+    'membership.lastPaymentDate': admin.firestore.FieldValue.serverTimestamp(),
     monthlyPostsUsed: 0,
-    lastPostsResetDate: new Date(),
+    lastPostsResetDate: admin.firestore.FieldValue.serverTimestamp(),
   });
 
-  console.log(`Payment succeeded for user ${userId}, expiry extended to ${expiresAt}`);
+  console.log(`Payment succeeded for user ${userId}`);
 }
 
 async function handlePaymentFailed(invoice) {
-  const customerId = invoice.customer;
-  const customer = await stripe.customers.retrieve(customerId);
+  const customer = await stripe.customers.retrieve(invoice.customer);
   const userId = customer.metadata?.firebaseUid;
 
   if (!userId) {
-    console.error('No Firebase UID found for customer:', customerId);
+    console.error('No Firebase UID found for customer:', invoice.customer);
     return;
   }
 
   await admin.firestore().collection('users').doc(userId).update({
     'membership.status': 'past_due',
-    'membership.lastPaymentFailed': new Date(),
+    'membership.lastPaymentFailed': admin.firestore.FieldValue.serverTimestamp(),
     'membership.paymentFailureReason': invoice.last_finalization_error?.message || 'Unknown',
   });
 
@@ -249,19 +233,12 @@ async function handlePaymentFailed(invoice) {
 }
 
 async function handleTrialEndingWarning(subscription) {
-  const customerId = subscription.customer;
-  const customer = await stripe.customers.retrieve(customerId);
+  const customer = await stripe.customers.retrieve(subscription.customer);
   const userId = customer.metadata?.firebaseUid;
-
   if (!userId) return;
   console.log(`Trial ending soon for user ${userId}`);
 }
 
-/**
- * Maps a Stripe price ID to an app tier ID.
- * Covers all six price env vars (3 tiers x 2 intervals).
- * Falls back to 'free' if the price ID is unrecognised.
- */
 function getPriceToTier(priceId) {
   const priceMap = {
     [process.env.STRIPE_PRICE_PLUS_MONTHLY]:  'plus',
