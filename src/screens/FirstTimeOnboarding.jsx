@@ -22,26 +22,26 @@ const SLIDES = [
   },
   {
     photo: slide2,
-    tag: 'Discover tab  ·  🔍',
+    tag: 'Discover tab',
     title: 'Find a game\nnear you',
     subtitle:
-      'Browse games on the map or switch to the list view. Filter by distance, tap a pin to see details — spots, skill level, host — and join in one tap.',
+      'Browse games on the map or switch to the list view. Filter by distance, tap a pin to see the details such as the spots, skill level and who is the host. Join in one tap.',
     cta: 'Next',
   },
   {
     photo: slide3,
-    tag: 'Post tab  ·  ⊕',
+    tag: 'Post tab',
     title: 'Host your\nown game',
     subtitle:
-      'Tap the ⊕ button to post a game. Set the location on the map, choose your format and skill level, and share the join code with mates for private games.',
+      'Tap the + button to post a game. Set the location on the map, choose your format and skill level, and share the join code with mates for private games.',
     cta: 'Next',
   },
   {
     photo: slide1,
-    tag: 'Profile tab  ·  👤',
+    tag: 'Profile tab',
     title: 'Your football\nreputation',
     subtitle:
-      'Track games attended and hosted, manage friends with your personal player code, and upgrade to Pro for unlimited posts and recurring fixtures.',
+      'Track games attended and hosted, manage friends with your personal player code, and upgrade to Ultra for unlimited posts and recurring fixtures.',
     cta: "Let's go",
   },
 ]
