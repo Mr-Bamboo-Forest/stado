@@ -99,3 +99,86 @@ input, select, textarea {
 .safe-area-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
+
+.btn--leave {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1.1rem;
+  border-radius: 8px;
+  border: 1.5px solid #b91c1c;   /* red-700 */
+  background: transparent;
+  color: #b91c1c;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.btn--leave:hover {
+  background: #fef2f2;           /* red-50 */
+}
+
+/* Confirmation block */
+.leave-confirm {
+  margin-top: 0.75rem;
+  padding: 1rem;
+  border-radius: 10px;
+  border: 1.5px solid #fecaca;   /* red-200 */
+  background: #fff5f5;
+}
+.leave-confirm__question {
+  margin: 0 0 0.65rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #1f2937;                /* gray-800 */
+}
+.leave-confirm__error {
+  margin: 0 0 0.65rem;
+  font-size: 0.85rem;
+  color: #b91c1c;
+}
+.leave-confirm__actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+/* Danger confirm button */
+.btn--danger {
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: none;
+  background: #b91c1c;
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn--danger:hover:not(:disabled) {
+  background: #991b1b;           /* red-800 */
+}
+.btn--danger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Ghost / cancel button */
+.btn--ghost {
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: 1.5px solid #d1d5db;   /* gray-300 */
+  background: transparent;
+  color: #374151;                 /* gray-700 */
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn--ghost:hover:not(:disabled) {
+  background: #f9fafb;
+}
+.btn--ghost:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
