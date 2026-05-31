@@ -71,6 +71,17 @@ export default async function handler(req, res) {
     const userDoc = await admin.firestore().collection('users').doc(userId).get();
     let customerId = userDoc.data()?.membership?.stripeCustomerId;
 
+    if (customerId) {
+      // Verify the customer still exists in Stripe
+      try {
+        const existing = await stripe.customers.retrieve(customerId);
+        if (existing.deleted) customerId = null;
+      } catch (err) {
+        // Customer not found in Stripe — clear the stale ID
+        customerId = null;
+      }
+    }
+
     if (!customerId) {
       const customer = await stripe.customers.create({
         email: userEmail,
